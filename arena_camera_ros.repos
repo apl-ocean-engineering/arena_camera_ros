@@ -2,4 +2,4 @@ repositories:
   imaging_msgs:
     type: git
     url: https://github.com/apl-ocean-engineering/imaging_msgs.git
-    version: main
+    version: ros1
