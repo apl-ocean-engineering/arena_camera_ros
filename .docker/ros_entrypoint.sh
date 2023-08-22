@@ -9,12 +9,12 @@ ROS_VERSION=${ROS_VERSION:-noetic}
 # fi
 
 # setup ros environment
-if [ "${CATKIN_WS}" == "" ]; then
+if [ "${ROS_WS}" == "" ]; then
     echo "Loading default environment: /opt/ros/$ROS_VERSION/setup.bash"
     source /opt/ros/$ROS_VERSION/setup.bash
 else
-    echo "Loading environment from workspace: $CATKIN_WS"
-    source $CATKIN_WS/devel/setup.bash
+    echo "Loading environment from workspace: $ROS_WS"
+    source $ROS_WS/devel/setup.bash
 fi
 
 exec "$@"
