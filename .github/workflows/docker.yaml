@@ -4,10 +4,11 @@ on:
   push:
     branches: [ master]
   workflow_dispatch:
-  # pull_request:
-  #   paths:
-  #     - .docker/**
-  #     - .github/workflows/docker.yaml
+  pull_request:
+    paths:
+      - .docker/**
+      - .github/workflows/docker.yaml
+
   # schedule:
   #   - cron: "0 17 * * 6"
 
@@ -21,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ROS_DISTRO: [iron]
+        ROS_DISTRO: [noetic]
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -30,14 +31,54 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+
+      # Need the docker-container driver to export to cache
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+        with:
+          driver: docker-container
+          install: true  # Set "docker build" == "docker buildx"
+
+
       - name: Log into registry
+        if: env.PUSH == 'true'
         uses: docker/login-action@v2.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      #
+      # Build CI image
+      #
+      - name: Docker metadata for build image
+        if: env.PUSH == 'true'
+        id: ci_meta
+        uses: docker/metadata-action@v4.6.0
+        with:
+          images: ghcr.io/${{ github.repository }}/ci
+          tags: |
+            type=raw,value=${{ matrix.ROS_DISTRO }}
+
+      - name: Build and push the build stage "ci"
+        if: env.PUSH == 'true'
+        uses: docker/build-push-action@v4.1.1
+        with:
+          context: .docker
+          file: .docker/Dockerfile
+          build-args: ROS_DISTRO=${{ matrix.ROS_DISTRO }}
+          target: ci
+          tags: ${{ steps.ci_meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: ${{ env.PUSH }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      #
+      # Build complete image
+      #
       - name: Docker metadata for final image
+        if: env.PUSH == 'true'
         id: meta
         uses: docker/metadata-action@v4.6.0
         with:
@@ -46,17 +87,13 @@ jobs:
             type=raw,value=${{ matrix.ROS_DISTRO }}-latest
             type=raw,value=latest
 
-      ## It's a little rigid around image labelling
-      ## but makes the actions much more readable
-      - uses: firehed/multistage-docker-build-action@v1
-        id: build
+      - name: Build and push full image
+        uses: docker/build-push-action@v4.1.1
         with:
-          dockerfile: .docker/Dockerfile
-          context: .docker/
-          repository: ghcr.io/${{ github.repository }}
-          stages: deps
-          testenv-stage: ci
-          server-stage: arena_camera_ros
+          context: .docker
+          file: .docker/Dockerfile
           build-args: ROS_DISTRO=${{ matrix.ROS_DISTRO }}
-
-      ## Testing or deployment can go here
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: ${{ env.PUSH }}
+          cache-from: type=gha
