@@ -54,7 +54,6 @@ RUN sh -c "sudo sh Arena_SDK_*.conf"
 FROM deps as ci
 
 ## ~~ Create non-root user ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 ARG USERNAME=ros
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
@@ -68,7 +67,6 @@ RUN groupadd --gid $USER_GID $USERNAME \
   && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
   && chmod 0440 /etc/sudoers.d/$USERNAME
 
-## ~~ Switch to non-root user ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 USER $USERNAME
 
 # Install the default ROS entrypoint
@@ -90,7 +88,7 @@ ONBUILD RUN echo "Cloning from ${ARENA_CAMERA_ROS_BRANCH} branch ${ARENA_CAMERA_
 
 # This will break cache when the repo changes
 ONBUILD ADD https://api.github.com/repos/apl-ocean-engineering/arena_camera_ros/git/refs/heads/${ARENA_CAMERA_ROS_BRANCH} version.json
-ONBUILD RUN git clone -b ${ARENA_CAMERA_ROS_BRANCH} ${ARENA_CAMERA_ROS_REPO}
+ONBUILD RUN git clone --depth 1 -b ${ARENA_CAMERA_ROS_BRANCH} ${ARENA_CAMERA_ROS_REPO}
 
 #====================================================================
 # Final image with built ROS packages
