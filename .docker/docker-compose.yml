@@ -1,0 +1,15 @@
+## Start a development stack with the current repo mounted into ros_ws/src/
+
+version: "3.9"
+services:
+  arena_camera:
+    build:
+      dockerfile: Dockerfile
+    image: ghcr.io/apl-ocean-engineering/arena_camera_ros/arena_camera_ros:latest
+    stdin_open: true
+    tty: true
+    network_mode: host
+    volumes:
+      - type: bind
+        source: ..
+        target: /home/ros/ros_ws/src/arena_camera_ros
