@@ -60,11 +60,9 @@ ArenaCameraNodeletBase::ArenaCameraNodeletBase()
       pDevice_(nullptr),
       is_streaming_(false),
       arena_camera_parameter_set_(),
-      set_user_output_srvs_(),
       it_(nullptr),
       img_raw_pub_(),
-      pinhole_model_(),
-      camera_info_manager_(nullptr),
+      camera_info_manager_(),
       sampling_indices_() {}
 
 ArenaCameraNodeletBase::~ArenaCameraNodeletBase() {
@@ -91,7 +89,8 @@ void ArenaCameraNodeletBase::onInit() {
   it_.reset(new image_transport::ImageTransport(nh));
   img_raw_pub_ = it_->advertiseCamera("image_raw", 1);
 
-  camera_info_manager_ = new camera_info_manager::CameraInfoManager(nh);
+  camera_info_manager_ =
+      std::make_shared<camera_info_manager::CameraInfoManager>(nh);
 
   diagnostics_updater_.setHardwareID("none");
   diagnostics_updater_.add(
@@ -410,28 +409,26 @@ bool ArenaCameraNodeletBase::configureCamera() {
     // Register callbacks for ExposureTime and Gain
     // what is this insanity, please learn about functionals
     {
-      GenApi::CFloatPtr pExposureTime =
-          pDevice_->GetNodeMap()->GetNode("ExposureTime");
-      if (!pExposureTime || !GenApi::IsReadable(pExposureTime)) {
-        throw GenICam::GenericException("ExposureTime node not found/readable",
-                                        __FILE__, __LINE__);
+      GenApi::CFloatPtr pExposureTime = pNodeMap->GetNode("ExposureTime");
+      if (pExposureTime && GenApi::IsReadable(pExposureTime)) {
+        exposure_changed_callback_ =
+            GenApi::Register(pExposureTime->GetNode(), *this,
+                             &ArenaCameraNodeletBase::onExposureChangeCallback);
+      } else {
+        NODELET_ERROR(
+            "Unable to read ExposureTime, unable to poll for changes");
       }
-
-      exposure_callback_ =
-          GenApi::Register(pExposureTime->GetNode(), *this,
-                           &ArenaCameraNodeletBase::onExposureChangeCallback);
     }
 
     {
-      GenApi::CFloatPtr pGain = pDevice_->GetNodeMap()->GetNode("Gain");
-      if (!pGain || !GenApi::IsReadable(pGain)) {
-        throw GenICam::GenericException("Gain node not found/readable",
-                                        __FILE__, __LINE__);
+      GenApi::CFloatPtr pGain = pNodeMap->GetNode("Gain");
+      if (pGain && GenApi::IsReadable(pGain)) {
+        gain_changed_callback_ =
+            GenApi::Register(pGain->GetNode(), *this,
+                             &ArenaCameraNodeletBase::onGainChangeCallback);
+      } else {
+        NODELET_ERROR("Unable to read Gain, unable to poll for changes");
       }
-
-      gain_callback_ =
-          GenApi::Register(pGain->GetNode(), *this,
-                           &ArenaCameraNodeletBase::onGainChangeCallback);
     }
 
   } catch (GenICam::GenericException &e) {
@@ -653,16 +650,12 @@ bool ArenaCameraNodeletBase::setImageEncoding(const std::string &ros_encoding) {
 
 float ArenaCameraNodeletBase::currentExposure(bool immediate) {
   if (immediate) {
-    GenApi::CFloatPtr pExposureTime =
-        pDevice_->GetNodeMap()->GetNode("ExposureTime");
-
-    if (!pExposureTime || !GenApi::IsReadable(pExposureTime)) {
-      NODELET_WARN_STREAM("No exposure time value, returning -1");
+    try {
+      return Arena::GetNodeValue<double>(pDevice_->GetNodeMap(),
+                                         "ExposureTime");
+    } catch (const GenICam::GenericException &e) {
+      NODELET_WARN_STREAM("Unable to read exposure time");
       return -1.0;
-    } else {
-      //  First arg:  Verify Enables Range verification
-      // Second arg:  Ignore Cache
-      return pExposureTime->GetValue(true, true);
     }
 
   } else {
@@ -673,7 +666,7 @@ float ArenaCameraNodeletBase::currentExposure(bool immediate) {
 void ArenaCameraNodeletBase::onExposureChangeCallback(GenApi::INode *pNode) {
   try {
     cached_exposure_ =
-        static_cast<GenApi::CFloatPtr>(pNode)->GetValue(true, true);
+        Arena::GetNodeValue<double>(pDevice_->GetNodeMap(), "ExposureTime");
   } catch (const GenICam::GenericException &e) {
     ;
   }
@@ -751,15 +744,11 @@ void ArenaCameraNodeletBase::setExposure(
 
 float ArenaCameraNodeletBase::currentGain(bool immediate) {
   if (immediate) {
-    GenApi::CFloatPtr pGain = pDevice_->GetNodeMap()->GetNode("Gain");
-
-    if (!pGain || !GenApi::IsReadable(pGain)) {
-      NODELET_WARN_STREAM("No gain value");
-      return -1.;
-    } else {
-      //  First arg:  Verify Enables Range verification
-      // Second arg:  Ignore Cache
-      return pGain->GetValue(true, true);
+    try {
+      return Arena::GetNodeValue<double>(pDevice_->GetNodeMap(), "Gain");
+    } catch (const GenICam::GenericException &e) {
+      NODELET_WARN_STREAM("Unable to read exposure time");
+      return -1.0;
     }
   } else {
     return cached_gain_;
@@ -768,7 +757,7 @@ float ArenaCameraNodeletBase::currentGain(bool immediate) {
 
 void ArenaCameraNodeletBase::onGainChangeCallback(GenApi::INode *pNode) {
   try {
-    cached_gain_ = static_cast<GenApi::CFloatPtr>(pNode)->GetValue(true, true);
+    cached_gain_ = Arena::GetNodeValue<double>(pDevice_->GetNodeMap(), "Gain");
   } catch (const GenICam::GenericException &e) {
     ;
   }

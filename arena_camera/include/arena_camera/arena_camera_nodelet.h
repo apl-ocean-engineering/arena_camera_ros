@@ -267,14 +267,10 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   ArenaCameraParameter arena_camera_parameter_set_;
 
-  std::vector<ros::ServiceServer> set_user_output_srvs_;
-
   std::unique_ptr<image_transport::ImageTransport> it_;
   image_transport::CameraPublisher img_raw_pub_;
 
-  image_geometry::PinholeCameraModel pinhole_model_;
-
-  camera_info_manager::CameraInfoManager *camera_info_manager_;
+  std::shared_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
 
   std::vector<std::size_t> sampling_indices_;
 
@@ -282,7 +278,7 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   // Internal cache for exposure and gain, updated by callback
   float cached_exposure_, cached_gain_;
-  GenApi::CallbackHandleType exposure_callback_, gain_callback_;
+  GenApi::CallbackHandleType exposure_changed_callback_, gain_changed_callback_;
 
   void onExposureChangeCallback(GenApi::INode *pNode);
   void onGainChangeCallback(GenApi::INode *pNode);
