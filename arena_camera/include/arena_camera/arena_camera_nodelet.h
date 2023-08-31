@@ -1,6 +1,6 @@
 /******************************************************************************
  * Software License Agreement (BSD 3-Clause License)
- * 
+ *
  * Copyright (C) 2023 University of Washington. All rights reserved.
  *
  * Based on the original arena_camera_ros as follows:
@@ -63,7 +63,7 @@
 
 // Arena
 #include <ArenaApi.h>
-// #include <arena_camera/arena_camera.h>
+#include <GenApi/GenApi.h>
 #include <arena_camera/arena_camera_parameter.h>
 
 // Auto-generated dynamic_reconfigure header file
@@ -115,11 +115,15 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   bool registerCameraBySerialNumber(const std::string &serial_number);
   bool registerCameraByAuto();
 
-  /**
-   * Start the camera and initialize the messages
-   * @return
-   */
+  ///
+  /// Start the camera and initialize the messages
+  /// @return
+  ///
   bool configureCamera();
+
+  /// Virtual callback for node initialization _after_ Node::onInit()
+  /// Only called if that initialization/configuration is successful.
+  virtual void onSuccessfulInit(){};
 
   // === Functions to set/get ImageEncoding ===
 
@@ -142,7 +146,12 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   //  exposure** allowed
   //                   for the auto-exposure algorithm
   void setExposure(AutoExposureMode exp_mode, float exposure_ms);
-  float currentExposure();
+
+  /// Return current camera ExposureTime
+  /// @param immediate If true, will directly query the camera. Otherwise uses a
+  /// cached value (updated by callback)
+  /// @return  Camera ExposureTime node (in us)
+  float currentExposure(bool immediate = false);
 
   //==== Functions to get/set gain ====
 
@@ -157,7 +166,12 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
    * @return true if the targeted gain could be reached
    */
   bool setGain(AutoGainMode gain_mode, float target_gain = 0.0);
-  float currentGain();
+
+  /// Return current camera Gain
+  /// @param immediate If true, will directly query the camera. Otherwise uses a
+  /// cached value (updated by callback)
+  /// @return  Camera Gain node
+  float currentGain(bool immediate = false);
 
   //==== Functions to get/set gamma ====
 
@@ -184,7 +198,6 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
    */
   bool setROI(const sensor_msgs::RegionOfInterest target_roi,
               sensor_msgs::RegionOfInterest &reached_roi);
-
 
   // === Functions to get/set ROI ===
 
@@ -233,10 +246,9 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   void enableLUT(bool enable);
 
  protected:
-
   Arena::ISystem *pSystem_;
   Arena::IDevice *pDevice_;
-  GenApi::INodeMap *pNodeMap_;
+  // GenApi::INodeMap *pNodeMap_;
 
   bool is_streaming_;
 
@@ -268,6 +280,15 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   boost::recursive_mutex device_mutex_;
 
+  // Internal cache for exposure and gain, updated by callback
+  float cached_exposure_, cached_gain_;
+  GenApi::CallbackHandleType exposure_callback_, gain_callback_;
+
+  void onExposureChangeCallback(GenApi::INode *pNode);
+  void onGainChangeCallback(GenApi::INode *pNode);
+
+  ros::Timer camera_poll_timer_;
+
   typedef dynamic_reconfigure::Server<arena_camera::ArenaCameraConfig>
       DynReconfigureServer;
   std::shared_ptr<DynReconfigureServer> _dynReconfigureServer;
@@ -282,9 +303,7 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   /// diagnostics:
   diagnostic_updater::Updater diagnostics_updater_;
-  void diagnostics_timer_callback_(const ros::TimerEvent &);
   ros::Timer diagnostics_trigger_;
-  void create_diagnostics(diagnostic_updater::DiagnosticStatusWrapper &stat);
   void create_camera_info_diagnostics(
       diagnostic_updater::DiagnosticStatusWrapper &stat);
 };
@@ -294,7 +313,7 @@ class ArenaCameraStreamingNodelet : public ArenaCameraNodeletBase {
   ArenaCameraStreamingNodelet();
   virtual ~ArenaCameraStreamingNodelet();
 
-  void onInit() override;
+  void onSuccessfulInit() override;
 
  protected:
   typedef std::function<void(Arena::IImage *pImage)> ImageCallback_t;
@@ -324,18 +343,16 @@ class ArenaCameraPolledNodelet : public ArenaCameraNodeletBase {
   ArenaCameraPolledNodelet();
   virtual ~ArenaCameraPolledNodelet();
 
-  void onInit() override;
+  void onSuccessfulInit() override;
 
-  /**
-   * Callback for the grab images action
-   * @param goal the goal
-   */
+  /// Callback for the grab images action
+  /// @param goal the goal
+  ///
   void grabImagesRawActionExecuteCB(
       const camera_control_msgs::GrabImagesGoal::ConstPtr &goal);
 
-  /**
-   * This function can also be called from the derived ArenaCameraOpenCV-Class
-   */
+  /// This function can also be called from the derived ArenaCameraOpenCV-Class
+  ///
   camera_control_msgs::GrabImagesResult grabImagesRaw(
       const camera_control_msgs::GrabImagesGoal::ConstPtr &goal,
       GrabImagesAS *action_server);

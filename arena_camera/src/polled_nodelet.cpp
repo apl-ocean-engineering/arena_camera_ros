@@ -28,6 +28,7 @@
  *****************************************************************************/
 
 #include <pluginlib/class_list_macros.h>
+
 #include <memory>
 
 #include "arena_camera/arena_camera_nodelet.h"
@@ -45,9 +46,7 @@ ArenaCameraPolledNodelet::~ArenaCameraPolledNodelet() {}
 //
 // Nodelet::onInit  function
 
-void ArenaCameraPolledNodelet::onInit() {
-  ArenaCameraNodeletBase::onInit();
-
+void ArenaCameraPolledNodelet::onSuccessfulInit() {
   try {
     pDevice_->StartStream();
   } catch (GenICam::GenericException &e) {
@@ -130,7 +129,7 @@ bool ArenaCameraPolledNodelet::grabImage() {
         goto out;
       }
 
-    sensor_msgs::Image::Ptr img_msg(new sensor_msgs::Image());
+      sensor_msgs::Image::Ptr img_msg(new sensor_msgs::Image());
 
       img_msg->header.stamp = ros::Time::now();
       img_msg->header.frame_id = arena_camera_parameter_set_.cameraFrame();

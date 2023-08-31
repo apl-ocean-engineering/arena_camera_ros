@@ -16,7 +16,6 @@
         <rosparam command="load" file="$(arg config_file)" />
     </node>
 
-
     <node name="web_video_server" pkg="web_video_server" type="web_video_server"
             output="screen" if="$(arg run_web_server)" >
         <param name="port" value="$(arg web_server_port)"/>

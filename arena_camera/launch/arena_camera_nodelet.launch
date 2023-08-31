@@ -1,7 +1,10 @@
 <?xml version="1.0"?>
 <launch>
-    <!-- This launchfile loads the arena_camera as a nodelet in a new
-         nodelet_manager  -->
+    <!-- Sample launchfile which loads the arena_camera as a nodelet in a new
+         nodelet_manager.
+
+         If  run_web_server:=true  an instance of web_video_server will
+         be run to allow streaming of video.  -->
 
     <arg name="respawn" default="false" />
     <arg name="debug" default="false" />

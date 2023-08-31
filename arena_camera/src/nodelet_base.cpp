@@ -58,7 +58,6 @@ using sensor_msgs::CameraInfoPtr;
 ArenaCameraNodeletBase::ArenaCameraNodeletBase()
     : pSystem_(nullptr),
       pDevice_(nullptr),
-      pNodeMap_(nullptr),
       is_streaming_(false),
       arena_camera_parameter_set_(),
       set_user_output_srvs_(),
@@ -95,14 +94,16 @@ void ArenaCameraNodeletBase::onInit() {
   camera_info_manager_ = new camera_info_manager::CameraInfoManager(nh);
 
   diagnostics_updater_.setHardwareID("none");
-  diagnostics_updater_.add("camera_availability", this,
-                           &ArenaCameraNodeletBase::create_diagnostics);
+  diagnostics_updater_.add(
+      "camera_availability",
+      [](diagnostic_updater::DiagnosticStatusWrapper &stat) {});
+
   diagnostics_updater_.add(
       "intrinsic_calibration", this,
       &ArenaCameraNodeletBase::create_camera_info_diagnostics);
   diagnostics_trigger_ = nh.createTimer(
-      ros::Duration(2), &ArenaCameraNodeletBase::diagnostics_timer_callback_,
-      this);
+      ros::Duration(2),
+      [&](const ros::TimerEvent &) { diagnostics_updater_.update(); });
 
   // Initialize parameters from parameter server
   arena_camera_parameter_set_.readFromRosParameterServer(pnh);
@@ -151,11 +152,21 @@ void ArenaCameraNodeletBase::onInit() {
     return;
   }
 
+  onSuccessfulInit();
+
+  // This all feel a bit adhoc
+  //
+  // It's weird that we can subscribe to gain and exposure, but don't actually
+  // get updates without a "poll"
+  const int poll_ms = 250;
+  camera_poll_timer_ = nh.createTimer(
+      ros::Duration(poll_ms * (1.0 / 1000.0)),
+      [&](const ros::TimerEvent &) { pDevice_->GetNodeMap()->Poll(poll_ms); });
+
   _dynReconfigureServer = std::make_shared<DynReconfigureServer>(pnh);
   _dynReconfigureServer->setCallback(boost::bind(
       &ArenaCameraNodeletBase::reconfigureCallbackWrapper, this, _1, _2));
 }
-
 
 //===================================================================
 //
@@ -241,7 +252,6 @@ bool ArenaCameraNodeletBase::registerCameraByAuto() {
 
   return false;
 }
-
 
 //===================================================================
 //
@@ -349,8 +359,6 @@ bool ArenaCameraNodeletBase::configureCamera() {
       // override initial camera info if the url is valid
       if (camera_info_manager_->loadCameraInfo(
               arena_camera_parameter_set_.cameraInfoURL())) {
-        // setupRectification();
-        // set the correct tf frame_id
         CameraInfoPtr cam_info(
             new CameraInfo(camera_info_manager_->getCameraInfo()));
 
@@ -383,20 +391,12 @@ bool ArenaCameraNodeletBase::configureCamera() {
       }
     }
 
-    // if (arena_camera_parameter_set_.image_encoding_given_)
-    // {
-    // 	float reached_image_encoding;
-    // 	if (setImageEncoding(arena_camera_parameter_set_.image_encoding_))
-    // 	{
-    // 		NODELET_INFO_STREAM("Setting encoding to "
-    // 						<<
-    // arena_camera_parameter_set_.image_encoding_);
-    // 	}
-    // }
-
     Arena::SetNodeValue<GenICam::gcstring>(pDevice_->GetTLStreamNodeMap(),
                                            "StreamBufferHandlingMode",
                                            "NewestOnly");
+
+    // A number of runtime parameters are set immediately through dynamic
+    // reconfigure: gain, exposure, frame rate
 
     // bool isTriggerArmed = false;
 
@@ -407,12 +407,33 @@ bool ArenaCameraNodeletBase::configureCamera() {
     //   // Arena::ExecuteNode(pNodeMap, "TriggerSoftware");
     // }
 
-    // pImage_ = pDevice_->GetImage(5000);
-    // pData_ = pImage_->GetData();
+    // Register callbacks for ExposureTime and Gain
+    // what is this insanity, please learn about functionals
+    {
+      GenApi::CFloatPtr pExposureTime =
+          pDevice_->GetNodeMap()->GetNode("ExposureTime");
+      if (!pExposureTime || !GenApi::IsReadable(pExposureTime)) {
+        throw GenICam::GenericException("ExposureTime node not found/readable",
+                                        __FILE__, __LINE__);
+      }
 
-    // img_raw_msg_.data.resize(img_raw_msg_.height * img_raw_msg_.step);
-    // memcpy(&img_raw_msg_.data[0], pImage_->GetData(),
-    //        img_raw_msg_.height * img_raw_msg_.step);
+      exposure_callback_ =
+          GenApi::Register(pExposureTime->GetNode(), *this,
+                           &ArenaCameraNodeletBase::onExposureChangeCallback);
+    }
+
+    {
+      GenApi::CFloatPtr pGain = pDevice_->GetNodeMap()->GetNode("Gain");
+      if (!pGain || !GenApi::IsReadable(pGain)) {
+        throw GenICam::GenericException("Gain node not found/readable",
+                                        __FILE__, __LINE__);
+      }
+
+      gain_callback_ =
+          GenApi::Register(pGain->GetNode(), *this,
+                           &ArenaCameraNodeletBase::onGainChangeCallback);
+    }
+
   } catch (GenICam::GenericException &e) {
     NODELET_ERROR_STREAM("Error while configuring camera: \r\n"
                          << e.GetDescription());
@@ -420,7 +441,7 @@ bool ArenaCameraNodeletBase::configureCamera() {
   }
 
   // --------------------------------------------------------------------------
- 
+
   if (!camera_info_manager_->setCameraName(std::string(
           Arena::GetNodeValue<GenICam::gcstring>(pNodeMap, "DeviceUserID")
               .c_str()))) {
@@ -581,7 +602,8 @@ bool ArenaCameraNodeletBase::setImageEncoding(const std::string &ros_encoding) {
     if (GenApi::IsWritable(pPixelFormat)) {
       Arena::SetNodeValue<GenICam::gcstring>(
           pDevice_->GetNodeMap(), "PixelFormat", gen_api_encoding.c_str());
-      if (currentImageEncoding() == "16UC3" || currentImageEncoding() == "16UC4")
+      if (currentImageEncoding() == "16UC3" ||
+          currentImageEncoding() == "16UC4")
         NODELET_WARN_STREAM(
             "ROS grabbing image data from 3D pixel format, unable to display "
             "in image viewer");
@@ -629,17 +651,31 @@ bool ArenaCameraNodeletBase::setImageEncoding(const std::string &ros_encoding) {
 //
 // Get/set exposure
 
+float ArenaCameraNodeletBase::currentExposure(bool immediate) {
+  if (immediate) {
+    GenApi::CFloatPtr pExposureTime =
+        pDevice_->GetNodeMap()->GetNode("ExposureTime");
 
-float ArenaCameraNodeletBase::currentExposure() {
-  GenApi::CFloatPtr pExposureTime =
-      pDevice_->GetNodeMap()->GetNode("ExposureTime");
+    if (!pExposureTime || !GenApi::IsReadable(pExposureTime)) {
+      NODELET_WARN_STREAM("No exposure time value, returning -1");
+      return -1.0;
+    } else {
+      //  First arg:  Verify Enables Range verification
+      // Second arg:  Ignore Cache
+      return pExposureTime->GetValue(true, true);
+    }
 
-  if (!pExposureTime || !GenApi::IsReadable(pExposureTime)) {
-    NODELET_WARN_STREAM("No exposure time value, returning -1");
-    return -1.;
   } else {
-    float exposureValue = pExposureTime->GetValue();
-    return exposureValue;
+    return cached_exposure_;
+  }
+}
+
+void ArenaCameraNodeletBase::onExposureChangeCallback(GenApi::INode *pNode) {
+  try {
+    cached_exposure_ =
+        static_cast<GenApi::CFloatPtr>(pNode)->GetValue(true, true);
+  } catch (const GenICam::GenericException &e) {
+    ;
   }
 }
 
@@ -713,18 +749,30 @@ void ArenaCameraNodeletBase::setExposure(
 //
 // Get/set gain
 
-float ArenaCameraNodeletBase::currentGain() {
-  GenApi::CFloatPtr pGain = pDevice_->GetNodeMap()->GetNode("Gain");
+float ArenaCameraNodeletBase::currentGain(bool immediate) {
+  if (immediate) {
+    GenApi::CFloatPtr pGain = pDevice_->GetNodeMap()->GetNode("Gain");
 
-  if (!pGain || !GenApi::IsReadable(pGain)) {
-    NODELET_WARN_STREAM("No gain value");
-    return -1.;
+    if (!pGain || !GenApi::IsReadable(pGain)) {
+      NODELET_WARN_STREAM("No gain value");
+      return -1.;
+    } else {
+      //  First arg:  Verify Enables Range verification
+      // Second arg:  Ignore Cache
+      return pGain->GetValue(true, true);
+    }
   } else {
-    float gainValue = pGain->GetValue();
-    return gainValue;
+    return cached_gain_;
   }
 }
 
+void ArenaCameraNodeletBase::onGainChangeCallback(GenApi::INode *pNode) {
+  try {
+    cached_gain_ = static_cast<GenApi::CFloatPtr>(pNode)->GetValue(true, true);
+  } catch (const GenICam::GenericException &e) {
+    ;
+  }
+}
 
 bool ArenaCameraNodeletBase::setGain(
     ArenaCameraNodeletBase::AutoGainMode gain_mode, float target_gain) {
@@ -793,7 +841,6 @@ float ArenaCameraNodeletBase::currentGamma() {
   }
 }
 
-
 bool ArenaCameraNodeletBase::setGamma(const float &target_gamma) {
   // for GigE cameras you have to enable gamma first
 
@@ -835,7 +882,6 @@ bool ArenaCameraNodeletBase::setGamma(const float &target_gamma) {
   return true;
 }
 
-
 //===================================================================
 //
 // Get/set ROI
@@ -859,7 +905,6 @@ bool ArenaCameraNodeletBase::setROI(
   // TODO: set ROI
   return true;
 }
-
 
 //===================================================================
 //
@@ -1065,10 +1110,10 @@ void ArenaCameraNodeletBase::setTargetBrightness(unsigned int brightness) {
   //   startStreaming();
 }
 
-
 void ArenaCameraNodeletBase::disableAllRunningAutoBrightessFunctions() {
-  GenApi::CStringPtr pExposureAuto = pNodeMap_->GetNode("ExposureAuto");
-  GenApi::CStringPtr pGainAuto = pNodeMap_->GetNode("GainAuto");
+  auto pNodeMap = pDevice_->GetNodeMap();
+  GenApi::CStringPtr pExposureAuto = pNodeMap->GetNode("ExposureAuto");
+  GenApi::CStringPtr pGainAuto = pNodeMap->GetNode("GainAuto");
 
   if (!pExposureAuto || !GenApi::IsWritable(pExposureAuto) || !pGainAuto ||
       !GenApi::IsWritable(pGainAuto)) {
@@ -1083,7 +1128,6 @@ void ArenaCameraNodeletBase::disableAllRunningAutoBrightessFunctions() {
                                            "Off");
   }
 }
-
 
 //-------------------------------------------------------------------
 //
@@ -1144,11 +1188,9 @@ void ArenaCameraNodeletBase::reconfigureCallback(ArenaCameraConfig &config,
 
   const bool was_streaming = is_streaming_;
   if (level >= stop_level) {
-    ROS_INFO("Stopping sensor for reconfigure");
+    ROS_DEBUG("Stopping sensor for reconfigure");
     stopStreaming();
   }
-
-  NODELET_INFO_STREAM("In reconfigureCallback");
 
   // -- The following params require stopping streaming, only set if needed --
   if (config.frame_rate != previous_config_.frame_rate) {
@@ -1170,7 +1212,7 @@ void ArenaCameraNodeletBase::reconfigureCallback(ArenaCameraConfig &config,
     setExposure(ArenaCameraNodeletBase::AutoExposureMode::Off,
                 config.exposure_ms);
   }
-  
+
   arena_camera_parameter_set_.gain_auto_ = config.auto_gain;
   if (arena_camera_parameter_set_.gain_auto_) {
     setGain(ArenaCameraNodeletBase::AutoGainMode::Continuous);
@@ -1182,6 +1224,7 @@ void ArenaCameraNodeletBase::reconfigureCallback(ArenaCameraConfig &config,
   setGamma(arena_camera_parameter_set_.gamma_);
 
   if ((level >= stop_level) && was_streaming) {
+    ROS_DEBUG("   ... restarting camera after reconfigure");
     startStreaming();
   }
 
@@ -1193,9 +1236,6 @@ void ArenaCameraNodeletBase::reconfigureCallback(ArenaCameraConfig &config,
 //  ROS Disagnostics callbacks
 //
 
-void ArenaCameraNodeletBase::create_diagnostics(
-    diagnostic_updater::DiagnosticStatusWrapper &stat) {}
-
 void ArenaCameraNodeletBase::create_camera_info_diagnostics(
     diagnostic_updater::DiagnosticStatusWrapper &stat) {
   if (camera_info_manager_->isCalibrated()) {
@@ -1204,10 +1244,4 @@ void ArenaCameraNodeletBase::create_camera_info_diagnostics(
     stat.summaryf(DiagnosticStatus::ERROR, "No intrinsic calibration found");
   }
 }
-
-void ArenaCameraNodeletBase::diagnostics_timer_callback_(
-    const ros::TimerEvent &) {
-  diagnostics_updater_.update();
-}
-
 }  // namespace arena_camera

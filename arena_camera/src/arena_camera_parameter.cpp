@@ -279,8 +279,6 @@ void ArenaCameraParameter::readFromRosParameterServer(
   nh.param<bool>("auto_flash_line_2", auto_flash_line_2_, true);
   nh.param<bool>("auto_flash_line_3", auto_flash_line_3_, true);
 
-  ROS_WARN("Autoflash: %i, line2: %i , line3: %i ", auto_flash_,
-           auto_flash_line_2_, auto_flash_line_3_);
   validateParameterSet(nh);
   return;
 }

@@ -53,10 +53,7 @@ ArenaCameraStreamingNodelet::~ArenaCameraStreamingNodelet() {
 //
 // Nodelet::onInit  function
 
-void ArenaCameraStreamingNodelet::onInit() {
-  // Call parent initiallzer
-  ArenaCameraNodeletBase::onInit();
-
+void ArenaCameraStreamingNodelet::onSuccessfulInit() {
   try {
     startStreaming();
   } catch (GenICam::GenericException &e) {
@@ -93,8 +90,7 @@ void ArenaCameraStreamingNodelet::imageCallback(Arena::IImage *pImage) {
     sensor_msgs::Image::Ptr img_msg(new sensor_msgs::Image());
 
     img_msg->header.stamp = ros::Time::now();
-  img_msg->header.frame_id = arena_camera_parameter_set_.cameraFrame();
-
+    img_msg->header.frame_id = arena_camera_parameter_set_.cameraFrame();
 
     // Will return false if PixelEndiannessUnknown
     img_msg->is_bigendian =
@@ -125,39 +121,40 @@ void ArenaCameraStreamingNodelet::imageCallback(Arena::IImage *pImage) {
     if (img_raw_pub_.getNumSubscribers() > 0) {
       // Create a new cam_info-object in every frame, because it might have
       // changed due to a 'set_camera_info'-service call
-      sensor_msgs::CameraInfo::Ptr cam_info(new sensor_msgs::CameraInfo(camera_info_manager_->getCameraInfo()));
+      sensor_msgs::CameraInfo::Ptr cam_info(
+          new sensor_msgs::CameraInfo(camera_info_manager_->getCameraInfo()));
       cam_info->header.stamp = img_msg->header.stamp;
       cam_info->header.frame_id = img_msg->header.frame_id;
 
       img_raw_pub_.publish(img_msg, cam_info);
     }
 
-  imaging_msgs::ImagingMetadata meta_msg;
-  meta_msg.header = img_msg->header;
+    imaging_msgs::ImagingMetadata meta_msg;
+    meta_msg.header = img_msg->header;
 
-  meta_msg.exposure_us = currentExposure();
-  meta_msg.gain = currentGain();
+    meta_msg.exposure_us = currentExposure();
+    meta_msg.gain = currentGain();
 
-  metadata_pub_.publish(meta_msg);
+    metadata_pub_.publish(meta_msg);
 
-  if (encoding_conversions::isHDR(currentImageEncoding())) {
-    imaging_msgs::HdrImagingMetadata hdr_meta_msg;
-    hdr_meta_msg.header = meta_msg.header;
-    hdr_meta_msg.exposure_us = meta_msg.exposure_us;
-    hdr_meta_msg.gain = meta_msg.gain;
+    if (encoding_conversions::isHDR(currentImageEncoding())) {
+      imaging_msgs::HdrImagingMetadata hdr_meta_msg;
+      hdr_meta_msg.header = meta_msg.header;
+      hdr_meta_msg.exposure_us = meta_msg.exposure_us;
+      hdr_meta_msg.gain = meta_msg.gain;
 
-    const int num_hdr_channels = 4;
-    hdr_meta_msg.hdr_exposure_us.resize(num_hdr_channels);
-    hdr_meta_msg.hdr_gain.resize(num_hdr_channels);
+      const int num_hdr_channels = 4;
+      hdr_meta_msg.hdr_exposure_us.resize(num_hdr_channels);
+      hdr_meta_msg.hdr_gain.resize(num_hdr_channels);
 
-    for (int hdr_channel = 0; hdr_channel < num_hdr_channels; hdr_channel++) {
-      hdr_meta_msg.hdr_exposure_us[hdr_channel] =
-          currentHdrExposure(hdr_channel);
-      hdr_meta_msg.hdr_gain[hdr_channel] = currentHdrGain(hdr_channel);
+      for (int hdr_channel = 0; hdr_channel < num_hdr_channels; hdr_channel++) {
+        hdr_meta_msg.hdr_exposure_us[hdr_channel] =
+            currentHdrExposure(hdr_channel);
+        hdr_meta_msg.hdr_gain[hdr_channel] = currentHdrGain(hdr_channel);
+      }
+
+      hdr_metadata_pub_.publish(hdr_meta_msg);
     }
-
-    hdr_metadata_pub_.publish(hdr_meta_msg);
-  }
   }
 }
 
