@@ -1,5 +1,6 @@
 /******************************************************************************
  * Software License Agreement (BSD 3-Clause License)
+ * 
  * Copyright (C) 2023 University of Washington. All rights reserved.
  *
  * Based on the original arena_camera_ros as follows:
@@ -120,56 +121,15 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
    */
   bool configureCamera();
 
+  // === Functions to set/get ImageEncoding ===
+
   bool setImageEncoding(const std::string &ros_encoding);
 
+  std::string currentImageEncoding();
+
+  // === Functions to get/set Frame Rate ===
+
   void updateFrameRate();
-
-  /**
-   * Update area of interest in the camera image
-   * @param target_roi the target roi
-   * @param reached_roi the roi that could be set
-   * @return true if the targeted roi could be reached
-   */
-  bool setROI(const sensor_msgs::RegionOfInterest target_roi,
-              sensor_msgs::RegionOfInterest &reached_roi);
-
-  /**
-   * Update the horizontal binning_x factor to get downsampled images
-   * @param target_binning_x the target horizontal binning_x factor
-   * @param reached_binning_x the horizontal binning_x factor that could be
-   *        reached
-   * @return true if the targeted binning could be reached
-   */
-  bool setBinningX(const size_t &target_binning_x, size_t &reached_binning_x);
-
-  /**
-   * Update the vertical binning_y factor to get downsampled images
-   * @param target_binning_y the target vertical binning_y factor
-   * @param reached_binning_y the vertical binning_y factor that could be
-   *        reached
-   * @return true if the targeted binning could be reached
-   */
-  bool setBinningY(const size_t &target_binning_y, size_t &reached_binning_y);
-
-  /**
-   * Sets the target brightness which is the intensity-mean over all pixels.
-   * If the target exposure time is not in the range of Arena's auto target
-   * brightness range the extended brightness search is started.
-   * The Auto function of the Arena-API supports values from [50 - 205].
-   * Using a binary search, this range will be extended up to [1 - 255].
-   * @param target_brightness is the desired brightness. Range is [1...255].
-   * @param current_brightness is the current brightness with the given
-   * settings.
-   * @param exposure_auto flag which indicates if the target_brightness
-   *                      should be reached adapting the exposure time
-   * @param gain_auto flag which indicates if the target_brightness should be
-   *                      reached adapting the gain.
-   * @return true if the brightness could be reached or false otherwise.
-   */
-  // bool setBrightness(const int &target_brightness, int &reached_brightness,
-  //                    const bool &exposure_auto, const bool &gain_auto);
-
-  void setTargetBrightness(unsigned int brightness);
 
   //==== Functions to get/set exposure ====
 
@@ -210,36 +170,61 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   float currentGamma();
 
   //===== Functions for querying HDR channels (IMX490 only)
+
   float currentHdrGain(int channel);
   float currentHdrExposure(int channel);
 
-  /**
-   * Generates the subset of points on which the brightness search will be
-   * executed in order to speed it up. The subset are the indices of the
-   * one-dimensional image_raw data vector. The base generation is done in a
-   * recursive manner, by calling genSamplingIndicesRec
-   * @return indices describing the subset of points
-   */
-  void setupSamplingIndices(std::vector<std::size_t> &indices, std::size_t rows,
-                            std::size_t cols, int downsampling_factor);
+  // === Functions to get/set ROI ===
 
   /**
-   * This function will recursively be called from above setupSamplingIndices()
-   * to generate the indices of pixels given the actual ROI.
-   * @return indices describing the subset of points
+   * Update area of interest in the camera image
+   * @param target_roi the target roi
+   * @param reached_roi the roi that could be set
+   * @return true if the targeted roi could be reached
    */
-  void genSamplingIndicesRec(std::vector<std::size_t> &indices,
-                             const std::size_t &min_window_height,
-                             const cv::Point2i &start, const cv::Point2i &end);
+  bool setROI(const sensor_msgs::RegionOfInterest target_roi,
+              sensor_msgs::RegionOfInterest &reached_roi);
+
+
+  // === Functions to get/set ROI ===
 
   /**
-   * Calculates the mean brightness of the image based on the subset indices
-   * @return the mean brightness of the image
+   * Update the horizontal binning_x factor to get downsampled images
+   * @param target_binning_x the target horizontal binning_x factor
+   * @param reached_binning_x the horizontal binning_x factor that could be
+   *        reached
+   * @return true if the targeted binning could be reached
    */
-  float calcCurrentBrightness();
+  bool setBinningX(const size_t &target_binning_x, size_t &reached_binning_x);
 
-  void initCalibrationMatrices(sensor_msgs::CameraInfo &info, const cv::Mat &D,
-                               const cv::Mat &K);
+  /**
+   * Update the vertical binning_y factor to get downsampled images
+   * @param target_binning_y the target vertical binning_y factor
+   * @param reached_binning_y the vertical binning_y factor that could be
+   *        reached
+   * @return true if the targeted binning could be reached
+   */
+  bool setBinningY(const size_t &target_binning_y, size_t &reached_binning_y);
+
+  /**
+   * Sets the target brightness which is the intensity-mean over all pixels.
+   * If the target exposure time is not in the range of Arena's auto target
+   * brightness range the extended brightness search is started.
+   * The Auto function of the Arena-API supports values from [50 - 205].
+   * Using a binary search, this range will be extended up to [1 - 255].
+   * @param target_brightness is the desired brightness. Range is [1...255].
+   * @param current_brightness is the current brightness with the given
+   * settings.
+   * @param exposure_auto flag which indicates if the target_brightness
+   *                      should be reached adapting the exposure time
+   * @param gain_auto flag which indicates if the target_brightness should be
+   *                      reached adapting the gain.
+   * @return true if the brightness could be reached or false otherwise.
+   */
+  // bool setBrightness(const int &target_brightness, int &reached_brightness,
+  //                    const bool &exposure_auto, const bool &gain_auto);
+
+  void setTargetBrightness(unsigned int brightness);
 
   /**
    *  Enable/disable lookup table (LUT) in camera.
@@ -248,9 +233,6 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   void enableLUT(bool enable);
 
  protected:
-  /// @brief
-  /// @param cam_info_msg
-  // void initializeCameraInfo(sensor_msgs::CameraInfo &cam_info_msg);
 
   Arena::ISystem *pSystem_;
   Arena::IDevice *pDevice_;
@@ -263,7 +245,6 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   sensor_msgs::RegionOfInterest currentROI();
   int64_t currentBinningX();
   int64_t currentBinningY();
-  std::string currentROSEncoding();
   bool setBinningXValue(const size_t &target_binning_x,
                         size_t &reached_binning_x);
   bool setBinningYValue(const size_t &target_binning_y,
@@ -281,13 +262,9 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   image_geometry::PinholeCameraModel pinhole_model_;
 
-  // Don't like using this global member
-  sensor_msgs::Image img_raw_msg_;
-
   camera_info_manager::CameraInfoManager *camera_info_manager_;
 
   std::vector<std::size_t> sampling_indices_;
-  // std::array<float, 256> brightness_exp_lut_;
 
   boost::recursive_mutex device_mutex_;
 

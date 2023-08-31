@@ -6,7 +6,7 @@
     <arg name="respawn" default="false" />
     <arg name="debug" default="false" />
     <arg name="node_name" default="arena_camera_node" />
-    <arg name="config_file" default="$(find arena_camera)/config/default.yaml" />
+    <arg name="config_file" default="$(find arena_camera)/launch/default_params.yaml" />
 
     <arg name="camera_user_id" default="" />
     <arg name="serial_number" default="" />

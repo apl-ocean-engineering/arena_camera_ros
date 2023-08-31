@@ -90,20 +90,24 @@ void ArenaCameraStreamingNodelet::imageCallback(Arena::IImage *pImage) {
       return;
     }
 
-    img_raw_msg_.header.stamp = ros::Time::now();
+    sensor_msgs::Image::Ptr img_msg(new sensor_msgs::Image());
+
+    img_msg->header.stamp = ros::Time::now();
+  img_msg->header.frame_id = arena_camera_parameter_set_.cameraFrame();
+
 
     // Will return false if PixelEndiannessUnknown
-    img_raw_msg_.is_bigendian =
+    img_msg->is_bigendian =
         (pImage->GetPixelEndianness() == Arena::PixelEndiannessBig);
 
-    img_raw_msg_.encoding = currentROSEncoding();
-    img_raw_msg_.height = pImage->GetHeight();
-    img_raw_msg_.width = pImage->GetWidth();
+    img_msg->encoding = currentImageEncoding();
+    img_msg->height = pImage->GetHeight();
+    img_msg->width = pImage->GetWidth();
 
     const unsigned int bytes_per_pixel = pImage->GetBitsPerPixel() / 8;
-    img_raw_msg_.step = img_raw_msg_.width * bytes_per_pixel;
+    img_msg->step = img_msg->width * bytes_per_pixel;
 
-    const unsigned int data_size = img_raw_msg_.height * img_raw_msg_.step;
+    const unsigned int data_size = img_msg->height * img_msg->step;
 
     // NODELET_INFO_STREAM("Image size " << pImage->GetWidth() << " x " <<
     // pImage->GetHeight() << " with " << pImage->GetBitsPerPixel() << " bits");
@@ -115,29 +119,28 @@ void ArenaCameraStreamingNodelet::imageCallback(Arena::IImage *pImage) {
 
     // \todo{amarburg} Validate image by comparing calculated image
     //  size to actual Buffer/Image payload size
-    img_raw_msg_.data.resize(data_size);
-    memcpy(&img_raw_msg_.data[0], pImage->GetData(), data_size);
+    img_msg->data.resize(data_size);
+    memcpy(&img_msg->data[0], pImage->GetData(), data_size);
 
     if (img_raw_pub_.getNumSubscribers() > 0) {
       // Create a new cam_info-object in every frame, because it might have
       // changed due to a 'set_camera_info'-service call
-      sensor_msgs::CameraInfo cam_info =
-          sensor_msgs::CameraInfo(camera_info_manager_->getCameraInfo());
-      cam_info.header.stamp = img_raw_msg_.header.stamp;
+      sensor_msgs::CameraInfo::Ptr cam_info(new sensor_msgs::CameraInfo(camera_info_manager_->getCameraInfo()));
+      cam_info->header.stamp = img_msg->header.stamp;
+      cam_info->header.frame_id = img_msg->header.frame_id;
 
-      img_raw_pub_.publish(img_raw_msg_, cam_info);
+      img_raw_pub_.publish(img_msg, cam_info);
     }
-  }
 
   imaging_msgs::ImagingMetadata meta_msg;
-  meta_msg.header = img_raw_msg_.header;
+  meta_msg.header = img_msg->header;
 
   meta_msg.exposure_us = currentExposure();
   meta_msg.gain = currentGain();
 
   metadata_pub_.publish(meta_msg);
 
-  if (encoding_conversions::isHDR(currentROSEncoding())) {
+  if (encoding_conversions::isHDR(currentImageEncoding())) {
     imaging_msgs::HdrImagingMetadata hdr_meta_msg;
     hdr_meta_msg.header = meta_msg.header;
     hdr_meta_msg.exposure_us = meta_msg.exposure_us;
@@ -154,6 +157,7 @@ void ArenaCameraStreamingNodelet::imageCallback(Arena::IImage *pImage) {
     }
 
     hdr_metadata_pub_.publish(hdr_meta_msg);
+  }
   }
 }
 

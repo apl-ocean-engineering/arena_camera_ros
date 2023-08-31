@@ -3,7 +3,7 @@
     <arg name="respawn" default="false" />
     <arg name="debug" default="false" />
     <arg name="node_name" default="arena_camera" />
-    <arg name="config_file" default="$(find arena_camera)/config/default.yaml" />
+    <arg name="config_file" default="$(find arena_camera)/launch/default_params.yaml" />
 
     <arg name="run_web_server" default="false" />
     <arg name="web_server_port" default="8080" />
