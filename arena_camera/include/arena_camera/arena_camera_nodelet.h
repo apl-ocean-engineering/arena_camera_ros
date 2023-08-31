@@ -248,7 +248,6 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
  protected:
   Arena::ISystem *pSystem_;
   Arena::IDevice *pDevice_;
-  // GenApi::INodeMap *pNodeMap_;
 
   bool is_streaming_;
 
