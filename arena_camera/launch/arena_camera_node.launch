@@ -3,7 +3,7 @@
     <arg name="respawn" default="false" />
     <arg name="debug" default="false" />
     <arg name="node_name" default="arena_camera" />
-    <arg name="config_file" default="$(find arena_camera)/config/default.yaml" />
+    <arg name="config_file" default="$(find arena_camera)/launch/default_params.yaml" />
 
     <arg name="run_web_server" default="false" />
     <arg name="web_server_port" default="8080" />
@@ -15,7 +15,6 @@
           respawn="$(arg respawn)" launch-prefix="$(arg launch_prefix)">
         <rosparam command="load" file="$(arg config_file)" />
     </node>
-
 
     <node name="web_video_server" pkg="web_video_server" type="web_video_server"
             output="screen" if="$(arg run_web_server)" >

@@ -99,8 +99,12 @@ frame_rate: 2.0
 #  reached by adapting the exposure time.
 #  The gain_auto flag indicates, that the desired brightness will be
 #  reached by adapting the gain.
+
 exposure_auto: true
+
+
 gain_auto: true
+
 ##########################################################################
 
 #  The timeout while searching the exposure which is connected to the

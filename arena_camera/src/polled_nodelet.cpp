@@ -29,6 +29,8 @@
 
 #include <pluginlib/class_list_macros.h>
 
+#include <memory>
+
 #include "arena_camera/arena_camera_nodelet.h"
 
 namespace arena_camera {
@@ -44,9 +46,7 @@ ArenaCameraPolledNodelet::~ArenaCameraPolledNodelet() {}
 //
 // Nodelet::onInit  function
 
-void ArenaCameraPolledNodelet::onInit() {
-  ArenaCameraNodeletBase::onInit();
-
+void ArenaCameraPolledNodelet::onSuccessfulInit() {
   try {
     pDevice_->StartStream();
   } catch (GenICam::GenericException &e) {
@@ -129,25 +129,28 @@ bool ArenaCameraPolledNodelet::grabImage() {
         goto out;
       }
 
-      img_raw_msg_.header.stamp = ros::Time::now();
+      sensor_msgs::Image::Ptr img_msg(new sensor_msgs::Image());
+
+      img_msg->header.stamp = ros::Time::now();
+      img_msg->header.frame_id = arena_camera_parameter_set_.cameraFrame();
 
       // Will return false if PixelEndiannessUnknown
-      img_raw_msg_.is_bigendian =
+      img_msg->is_bigendian =
           (pImage->GetPixelEndianness() == Arena::PixelEndiannessBig);
 
-      img_raw_msg_.encoding = currentROSEncoding();
-      img_raw_msg_.height = pImage->GetHeight();
-      img_raw_msg_.width = pImage->GetWidth();
+      img_msg->encoding = currentImageEncoding();
+      img_msg->height = pImage->GetHeight();
+      img_msg->width = pImage->GetWidth();
 
       const unsigned int bytes_per_pixel = pImage->GetBitsPerPixel() / 8;
-      img_raw_msg_.step = img_raw_msg_.width * bytes_per_pixel;
+      img_msg->step = img_msg->width * bytes_per_pixel;
 
-      const unsigned int data_size = img_raw_msg_.height * img_raw_msg_.step;
+      const unsigned int data_size = img_msg->height * img_msg->step;
 
       // \todo{amarburg} Compare to Buffer/Image payload size
 
-      img_raw_msg_.data.resize(data_size);
-      memcpy(&img_raw_msg_.data[0], pImage->GetData(), data_size);
+      img_msg->data.resize(data_size);
+      memcpy(&img_msg->data[0], pImage->GetData(), data_size);
 
       retval = true;
     }
@@ -334,7 +337,7 @@ camera_control_msgs::GrabImagesResult ArenaCameraPolledNodelet::grabImagesRaw(
     // img.width = pImage_->GetWidth();
     // // step = full row length in bytes, img_size = (step * rows),
     // // imagePixelDepth already contains the number of channels
-    // img_raw_msg_.step = img_raw_msg_.width * (pImage_->GetBitsPerPixel() /
+    // img_msg->step = img_msg->width * (pImage_->GetBitsPerPixel() /
     // 8);
 
     // img.header.stamp = ros::Time::now();

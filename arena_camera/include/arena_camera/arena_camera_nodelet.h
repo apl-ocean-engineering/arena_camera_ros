@@ -1,5 +1,6 @@
 /******************************************************************************
  * Software License Agreement (BSD 3-Clause License)
+ *
  * Copyright (C) 2023 University of Washington. All rights reserved.
  *
  * Based on the original arena_camera_ros as follows:
@@ -62,7 +63,7 @@
 
 // Arena
 #include <ArenaApi.h>
-// #include <arena_camera/arena_camera.h>
+#include <GenApi/GenApi.h>
 #include <arena_camera/arena_camera_parameter.h>
 
 // Auto-generated dynamic_reconfigure header file
@@ -114,15 +115,80 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   bool registerCameraBySerialNumber(const std::string &serial_number);
   bool registerCameraByAuto();
 
-  /**
-   * Start the camera and initialize the messages
-   * @return
-   */
+  ///
+  /// Start the camera and initialize the messages
+  /// @return
+  ///
   bool configureCamera();
+
+  /// Virtual callback for node initialization _after_ Node::onInit()
+  /// Only called if that initialization/configuration is successful.
+  virtual void onSuccessfulInit(){};
+
+  // === Functions to set/get ImageEncoding ===
 
   bool setImageEncoding(const std::string &ros_encoding);
 
+  std::string currentImageEncoding();
+
+  // === Functions to get/set Frame Rate ===
+
   void updateFrameRate();
+
+  //==== Functions to get/set exposure ====
+
+  enum class AutoExposureMode : int { Off = 0, Once = 1, Continuous = 2 };
+
+  // Update exposure based on arena_camera_parameter_set
+  //
+  //  If exp_mode == Off, exposure_ms is the **fixed exposure** set in the
+  //  camera If exp_mode == Once or Continuous, exposure_ms is the **max
+  //  exposure** allowed
+  //                   for the auto-exposure algorithm
+  void setExposure(AutoExposureMode exp_mode, float exposure_ms);
+
+  /// Return current camera ExposureTime
+  /// @param immediate If true, will directly query the camera. Otherwise uses a
+  /// cached value (updated by callback)
+  /// @return  Camera ExposureTime node (in us)
+  float currentExposure(bool immediate = false);
+
+  //==== Functions to get/set gain ====
+
+  enum class AutoGainMode : int { Off = 0, Once = 1, Continuous = 2 };
+
+  /**
+   * Update the gain from the camera to a target gain in percent
+   * @param gain_mode   Request gain mode
+   * @param target_gain the targeted gain in percent.  Ignored if gain_mode
+   * isn't "Off"
+   * @param reached_gain the gain that could be reached
+   * @return true if the targeted gain could be reached
+   */
+  bool setGain(AutoGainMode gain_mode, float target_gain = 0.0);
+
+  /// Return current camera Gain
+  /// @param immediate If true, will directly query the camera. Otherwise uses a
+  /// cached value (updated by callback)
+  /// @return  Camera Gain node
+  float currentGain(bool immediate = false);
+
+  //==== Functions to get/set gamma ====
+
+  /**
+   * Update the gamma from the camera to a target gamma correction value
+   * @param target_gamma the targeted gamma
+   * @return true if the targeted gamma could be reached
+   */
+  bool setGamma(const float &target_gamma);
+  float currentGamma();
+
+  //===== Functions for querying HDR channels (IMX490 only)
+
+  float currentHdrGain(int channel);
+  float currentHdrExposure(int channel);
+
+  // === Functions to get/set ROI ===
 
   /**
    * Update area of interest in the camera image
@@ -132,6 +198,8 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
    */
   bool setROI(const sensor_msgs::RegionOfInterest target_roi,
               sensor_msgs::RegionOfInterest &reached_roi);
+
+  // === Functions to get/set ROI ===
 
   /**
    * Update the horizontal binning_x factor to get downsampled images
@@ -171,76 +239,6 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   void setTargetBrightness(unsigned int brightness);
 
-  //==== Functions to get/set exposure ====
-
-  enum class AutoExposureMode : int { Off = 0, Once = 1, Continuous = 2 };
-
-  // Update exposure based on arena_camera_parameter_set
-  //
-  //  If exp_mode == Off, exposure_ms is the **fixed exposure** set in the
-  //  camera If exp_mode == Once or Continuous, exposure_ms is the **max
-  //  exposure** allowed
-  //                   for the auto-exposure algorithm
-  void setExposure(AutoExposureMode exp_mode, float exposure_ms);
-  float currentExposure();
-
-  //==== Functions to get/set gain ====
-
-  enum class AutoGainMode : int { Off = 0, Once = 1, Continuous = 2 };
-
-  /**
-   * Update the gain from the camera to a target gain in percent
-   * @param gain_mode   Request gain mode
-   * @param target_gain the targeted gain in percent.  Ignored if gain_mode
-   * isn't "Off"
-   * @param reached_gain the gain that could be reached
-   * @return true if the targeted gain could be reached
-   */
-  bool setGain(AutoGainMode gain_mode, float target_gain = 0.0);
-  float currentGain();
-
-  //==== Functions to get/set gamma ====
-
-  /**
-   * Update the gamma from the camera to a target gamma correction value
-   * @param target_gamma the targeted gamma
-   * @return true if the targeted gamma could be reached
-   */
-  bool setGamma(const float &target_gamma);
-  float currentGamma();
-
-  //===== Functions for querying HDR channels (IMX490 only)
-  float currentHdrGain(int channel);
-  float currentHdrExposure(int channel);
-
-  /**
-   * Generates the subset of points on which the brightness search will be
-   * executed in order to speed it up. The subset are the indices of the
-   * one-dimensional image_raw data vector. The base generation is done in a
-   * recursive manner, by calling genSamplingIndicesRec
-   * @return indices describing the subset of points
-   */
-  void setupSamplingIndices(std::vector<std::size_t> &indices, std::size_t rows,
-                            std::size_t cols, int downsampling_factor);
-
-  /**
-   * This function will recursively be called from above setupSamplingIndices()
-   * to generate the indices of pixels given the actual ROI.
-   * @return indices describing the subset of points
-   */
-  void genSamplingIndicesRec(std::vector<std::size_t> &indices,
-                             const std::size_t &min_window_height,
-                             const cv::Point2i &start, const cv::Point2i &end);
-
-  /**
-   * Calculates the mean brightness of the image based on the subset indices
-   * @return the mean brightness of the image
-   */
-  float calcCurrentBrightness();
-
-  void initCalibrationMatrices(sensor_msgs::CameraInfo &info, const cv::Mat &D,
-                               const cv::Mat &K);
-
   /**
    *  Enable/disable lookup table (LUT) in camera.
    * @param enable Whether to enable/disable the camera LUT
@@ -248,13 +246,8 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   void enableLUT(bool enable);
 
  protected:
-  /// @brief
-  /// @param cam_info_msg
-  // void initializeCameraInfo(sensor_msgs::CameraInfo &cam_info_msg);
-
   Arena::ISystem *pSystem_;
   Arena::IDevice *pDevice_;
-  GenApi::INodeMap *pNodeMap_;
 
   bool is_streaming_;
 
@@ -263,7 +256,6 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   sensor_msgs::RegionOfInterest currentROI();
   int64_t currentBinningX();
   int64_t currentBinningY();
-  std::string currentROSEncoding();
   bool setBinningXValue(const size_t &target_binning_x,
                         size_t &reached_binning_x);
   bool setBinningYValue(const size_t &target_binning_y,
@@ -274,22 +266,23 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   ArenaCameraParameter arena_camera_parameter_set_;
 
-  std::vector<ros::ServiceServer> set_user_output_srvs_;
-
   std::unique_ptr<image_transport::ImageTransport> it_;
   image_transport::CameraPublisher img_raw_pub_;
 
-  image_geometry::PinholeCameraModel pinhole_model_;
-
-  // Don't like using this global member
-  sensor_msgs::Image img_raw_msg_;
-
-  camera_info_manager::CameraInfoManager *camera_info_manager_;
+  std::shared_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
 
   std::vector<std::size_t> sampling_indices_;
-  // std::array<float, 256> brightness_exp_lut_;
 
   boost::recursive_mutex device_mutex_;
+
+  // Internal cache for exposure and gain, updated by callback
+  float cached_exposure_, cached_gain_;
+  GenApi::CallbackHandleType exposure_changed_callback_, gain_changed_callback_;
+
+  void onExposureChangeCallback(GenApi::INode *pNode);
+  void onGainChangeCallback(GenApi::INode *pNode);
+
+  ros::Timer camera_poll_timer_;
 
   typedef dynamic_reconfigure::Server<arena_camera::ArenaCameraConfig>
       DynReconfigureServer;
@@ -305,9 +298,7 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   /// diagnostics:
   diagnostic_updater::Updater diagnostics_updater_;
-  void diagnostics_timer_callback_(const ros::TimerEvent &);
   ros::Timer diagnostics_trigger_;
-  void create_diagnostics(diagnostic_updater::DiagnosticStatusWrapper &stat);
   void create_camera_info_diagnostics(
       diagnostic_updater::DiagnosticStatusWrapper &stat);
 };
@@ -317,7 +308,7 @@ class ArenaCameraStreamingNodelet : public ArenaCameraNodeletBase {
   ArenaCameraStreamingNodelet();
   virtual ~ArenaCameraStreamingNodelet();
 
-  void onInit() override;
+  void onSuccessfulInit() override;
 
  protected:
   typedef std::function<void(Arena::IImage *pImage)> ImageCallback_t;
@@ -347,18 +338,16 @@ class ArenaCameraPolledNodelet : public ArenaCameraNodeletBase {
   ArenaCameraPolledNodelet();
   virtual ~ArenaCameraPolledNodelet();
 
-  void onInit() override;
+  void onSuccessfulInit() override;
 
-  /**
-   * Callback for the grab images action
-   * @param goal the goal
-   */
+  /// Callback for the grab images action
+  /// @param goal the goal
+  ///
   void grabImagesRawActionExecuteCB(
       const camera_control_msgs::GrabImagesGoal::ConstPtr &goal);
 
-  /**
-   * This function can also be called from the derived ArenaCameraOpenCV-Class
-   */
+  /// This function can also be called from the derived ArenaCameraOpenCV-Class
+  ///
   camera_control_msgs::GrabImagesResult grabImagesRaw(
       const camera_control_msgs::GrabImagesGoal::ConstPtr &goal,
       GrabImagesAS *action_server);

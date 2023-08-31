@@ -34,22 +34,26 @@
 namespace arena_camera {
 
 namespace encoding_conversions {
-/**
- * Converts an encoding from the sensor_msgs/image_encodings.h list into
- * the GenAPI language.
- * @return true in case that an corresponding conversion could be found and
- *         false otherwise.
- */
+
+/// Converts an encoding from the sensor_msgs/image_encodings.h list into
+/// the GenAPI language.
+/// @return true in case that an corresponding conversion could be found and
+///         false otherwise.
+///
 bool ros2GenAPI(const std::string& ros_enc, std::string& gen_api_enc);
 
-/**
- * Converts an encoding described in GenAPI language into the ROS encoding
- * language. The ROS encodings are listed in sensor_msgs/image_encodings.h
- * @return true in case that an corresponding conversion could be found and
- *         false otherwise.
- */
+/// Converts an encoding described in GenAPI language into the ROS encoding
+/// language. The ROS encodings are listed in sensor_msgs/image_encodings.h
+/// @return true in case that an corresponding conversion could be found and
+///        false otherwise.
+///
 bool genAPI2Ros(const std::string& gen_api_enc, std::string& ros_enc);
 
+/// @brief Check of ros_encoding represents a high-dynamic-range format
+/// @param ros_enc ROS image_encoding string.
+/// @return True if the supplied encoding as a high-dynamic-range type
+///         (e.g. > 16 bits per channel RGB/BGR or Bayer)
+///
 bool isHDR(const std::string& ros_enc);
 
 }  // namespace encoding_conversions

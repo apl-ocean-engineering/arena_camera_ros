@@ -1,12 +1,15 @@
 <?xml version="1.0"?>
 <launch>
-    <!-- This launchfile loads the arena_camera as a nodelet in a new
-         nodelet_manager  -->
+    <!-- Sample launchfile which loads the arena_camera as a nodelet in a new
+         nodelet_manager.
+
+         If  run_web_server:=true  an instance of web_video_server will
+         be run to allow streaming of video.  -->
 
     <arg name="respawn" default="false" />
     <arg name="debug" default="false" />
     <arg name="node_name" default="arena_camera_node" />
-    <arg name="config_file" default="$(find arena_camera)/config/default.yaml" />
+    <arg name="config_file" default="$(find arena_camera)/launch/default_params.yaml" />
 
     <arg name="camera_user_id" default="" />
     <arg name="serial_number" default="" />

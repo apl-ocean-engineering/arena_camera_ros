@@ -28,17 +28,15 @@
  *****************************************************************************/
 
 /*
-This program will open a Lucid Arena Camera and write a desired camera id.
+This standalone program will open a Lucid Arena Camera and write a
+desired camera id.
 */
 
-// STD
+#include <ArenaApi.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <string>
-
-// Arena
-#include <ArenaApi.h>
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
