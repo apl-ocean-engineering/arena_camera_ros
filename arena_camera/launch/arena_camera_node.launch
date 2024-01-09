@@ -3,6 +3,10 @@
     <arg name="respawn" default="false" />
     <arg name="debug" default="false" />
     <arg name="node_name" default="arena_camera" />
+
+    <arg name="camera_user_id" default="" />
+    <arg name="serial_number" default="" />
+
     <arg name="config_file" default="$(find arena_camera)/launch/default_params.yaml" />
 
     <arg name="run_web_server" default="false" />
@@ -14,6 +18,12 @@
     <node name="$(arg node_name)" pkg="arena_camera" type="streaming_arena_camera" output="screen"
           respawn="$(arg respawn)" launch-prefix="$(arg launch_prefix)">
         <rosparam command="load" file="$(arg config_file)" />
+
+        <param name="device_user_id" value="$(arg camera_user_id)"/>
+
+        <!-- n.b. the serial number must be cast as a string otherwise you
+                  get a silent failure -->
+        <param name="serial_number" value="$(arg serial_number)" type="str"/>
     </node>
 
     <node name="web_video_server" pkg="web_video_server" type="web_video_server"
