@@ -83,7 +83,7 @@ ARG WS_DIR=/home/$USERNAME/ros_ws
 ONBUILD WORKDIR ${WS_DIR}/src
 
 ARG ARENA_CAMERA_ROS_REPO=https://github.com/apl-ocean-engineering/arena_camera_ros.git
-ARG ARENA_CAMERA_ROS_BRANCH=master
+ARG ARENA_CAMERA_ROS_BRANCH=main
 ONBUILD RUN echo "Cloning from ${ARENA_CAMERA_ROS_BRANCH} branch ${ARENA_CAMERA_ROS_REPO}"
 
 # This will break cache when the repo changes
