@@ -1,6 +1,10 @@
 /******************************************************************************
  * Software License Agreement (BSD License)
  *
+ * Copyright (C) 2023 University of Washington
+ *
+ * based on the arena_camera_ros driver released under the BSD License:
+ * Copyright (C) 2021, Lucidvision Labs, which is based on
  * Copyright (C) 2016, Magazino GmbH. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,16 +39,16 @@
 #include <string>
 #include <vector>
 
-// ROS
+// ROS1
 #include <dynamic_reconfigure/SensorLevels.h>
 #include <sensor_msgs/RegionOfInterest.h>
 
-// Arena
+// Arena SDK
 #include <ArenaApi.h>
 #include <GenApi/GenApi.h>
 #include <GenApiCustom.h>
 
-// Arena node
+//
 #include "arena_camera/arena_camera_nodelet.h"
 #include "arena_camera/encoding_conversions.h"
 
@@ -137,12 +141,13 @@ void ArenaCameraNodeletBase::onInit() {
   }
 
   // Validate that the camera is from Lucid (otherwise the Arena SDK
-  // will segfault)
+  // will segfault when you try to connect)
   const auto device_vendor_name = Arena::GetNodeValue<GenICam::gcstring>(
       pDevice_->GetNodeMap(), "DeviceVendorName");
   if (device_vendor_name != "Lucid Vision Labs") {
     NODELET_FATAL_STREAM(
-        "Hm, this doesn't appear to be a Lucid Vision camera, got vendor name: "
+        "I found a camera, but it doesn't appear to be a Lucid Vision camera, "
+        "got vendor name: "
         << device_vendor_name);
   }
 
@@ -157,7 +162,7 @@ void ArenaCameraNodeletBase::onInit() {
   //
   // It's weird that we can subscribe to gain and exposure, but don't actually
   // get updates without a "poll"
-  const int poll_ms = 250;
+  const int poll_ms = 100;
   camera_poll_timer_ = nh.createTimer(
       ros::Duration(poll_ms * (1.0 / 1000.0)),
       [&](const ros::TimerEvent &) { pDevice_->GetNodeMap()->Poll(poll_ms); });
@@ -223,7 +228,7 @@ bool ArenaCameraNodeletBase::registerCameraBySerialNumber(
   NODELET_ERROR_STREAM(
       "Couldn't find the camera that matches the "
       << "given Serial Number: " << serial_number << "! "
-      << "Either the ID is wrong or the cam is not yet connected");
+      << "Either the ID is wrong or the camera is not connected");
   return false;
 }
 
@@ -260,9 +265,11 @@ bool ArenaCameraNodeletBase::configureCamera() {
   ros::NodeHandle nh = getNodeHandle();
   auto pNodeMap = pDevice_->GetNodeMap();
 
-  // **NOTE** only configuration which is not also accessible through
-  // dynamic_reconfigure.  Those will be handled in the callback
-  // when it is called for the first time at node startup.
+  // **NOTE** This function only performs one-off configuration which is
+  // not also accessible through dynamic_reconfigure.
+  //
+  // dyn_reconfigure parameters will be handled in the callback when it
+  // is called for the first time at node startup.
 
   try {
     NODELET_INFO_STREAM(
@@ -272,10 +279,7 @@ bool ArenaCameraNodeletBase::configureCamera() {
         "Device firmware: " << Arena::GetNodeValue<GenICam::gcstring>(
             pDevice_->GetNodeMap(), "DeviceFirmwareVersion"));
 
-    //
-    // Arena device prior streaming settings
-    //
-
+    // Parameters specific to GigER cameras
     if (Arena::GetNodeValue<GenICam::gcstring>(
             pDevice_->GetNodeMap(), "DeviceTLType") == "GigEVision") {
       NODELET_INFO("GigE device, performing GigE specific configuration:");
@@ -290,6 +294,19 @@ bool ArenaCameraNodeletBase::configureCamera() {
       } else {
         NODELET_INFO(" -> Camera MTU is not writeable");
       }
+
+      auto interPacketDelay = pNodeMap->GetNode("GevSCPD");
+      if (GenApi::IsWritable(pPacketSize)) {
+        NODELET_INFO_STREAM(" -> Setting inter-packet delay to "
+                            << arena_camera_parameter_set_.inter_pkg_delay_);
+        Arena::SetNodeValue<int64_t>(
+            pNodeMap, "GevSCPD", arena_camera_parameter_set_.inter_pkg_delay_);
+      } else {
+        NODELET_INFO_STREAM(" -> Camera inter-packet delay is not writeable");
+      }
+      NODELET_INFO_STREAM(" -> Inter-packet delay real from camera "
+                          << Arena::GetNodeValue<int64_t>(pNodeMap, "GevSCPD")
+                          << " ns");
     }
 
     auto payloadSize = Arena::GetNodeValue<int64_t>(pNodeMap, "PayloadSize");

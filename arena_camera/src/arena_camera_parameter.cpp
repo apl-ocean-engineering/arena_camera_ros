@@ -46,7 +46,6 @@ ArenaCameraParameter::ArenaCameraParameter()
       frame_rate_(5.0),
       camera_info_url_(""),
       image_encoding_(""),
-      image_encoding_given_(false),
       binning_x_(1), binning_y_(1),
       binning_x_given_(false), binning_y_given_(false),
       downsampling_factor_exp_search_(1),
@@ -130,7 +129,7 @@ void ArenaCameraParameter::readFromRosParameterServer(
   }
   nh.param<int>("downsampling_factor_exposure_search",
                 downsampling_factor_exp_search_, 20);
-  image_encoding_given_ = nh.hasParam("image_encoding");
+
   if (nh.hasParam("image_encoding")) {
     std::string encoding;
     nh.getParam("image_encoding", encoding);

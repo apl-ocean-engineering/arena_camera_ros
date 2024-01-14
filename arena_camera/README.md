@@ -1,10 +1,12 @@
 # ROS-Driver for Lucid Cameras using the Arena SDK
 
+**Project Status:**  This software is a work in progress.  At present the streaming node is functional with the sample cameras which are available to us (a [PHX122S](https://thinklucid.com/product/phoenix-12-2-mp-imx226/) and a [TRI054S](https://thinklucid.com/product/triton-5-mp-imx490/) for testing HDR modes).   The polled node is not functional.
+
 **developed by Magazino GmbH, using the arena Software Camera Suite by Lucid AG**
 
 Based on the upstream [Arena Camera Driver](https://github.com/lucidvisionlabs/arena_camera_ros) by Magazino GmbH, this node has been heavily modified for structure and stability.
 
-This package offers many functions of the Lucid arena API inside the ROS-Framwork.   This version focuses on the GigE cameras although it should be largely applicable to USB 3.0 cameras (we just don't have the hardware to test).
+This package offers many functions of the Lucid arena API inside the ROS-Framwork.   This version focuses on the GigE cameras although it should be largely applicable to USB 3.0 cameras (but we don't have the hardware to test).
 
 
 This package includes two node/nodelets:

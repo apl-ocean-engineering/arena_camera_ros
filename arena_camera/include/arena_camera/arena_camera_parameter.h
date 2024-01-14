@@ -121,8 +121,6 @@ class ArenaCameraParameter {
   bool binning_x_given_;
   bool binning_y_given_;
 
-  bool image_encoding_given_;
-
   /**
    * Factor that describes the image downsampling to speed up the exposure
    * search to find the desired brightness.

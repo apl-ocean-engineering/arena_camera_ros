@@ -77,30 +77,28 @@ CMD ["/bin/bash"]
 #====================================================================
 # Intermediate image with cloned Git repos
 #====================================================================
-FROM ci as build_clone
+FROM ci as clone
 
 ARG WS_DIR=/home/$USERNAME/ros_ws
 ONBUILD WORKDIR ${WS_DIR}/src
 
 ARG ARENA_CAMERA_ROS_REPO=https://github.com/apl-ocean-engineering/arena_camera_ros.git
-ARG ARENA_CAMERA_ROS_BRANCH=master
+ARG ARENA_CAMERA_ROS_BRANCH=main
 ONBUILD RUN echo "Cloning from ${ARENA_CAMERA_ROS_BRANCH} branch ${ARENA_CAMERA_ROS_REPO}"
 
-# This will break cache when the repo changes
-ONBUILD ADD https://api.github.com/repos/apl-ocean-engineering/arena_camera_ros/git/refs/heads/${ARENA_CAMERA_ROS_BRANCH} version.json
+# This will break the Docker cache when the repo changes at github.com
+ONBUILD ADD https://api.github.com/repos/apl-ocean-engineering/arena_camera_ros/git/refs/heads/${ARENA_CAMERA_ROS_BRANCH} /tmp/version.json
 ONBUILD RUN git clone --depth 1 -b ${ARENA_CAMERA_ROS_BRANCH} ${ARENA_CAMERA_ROS_REPO}
 
 #====================================================================
-# Final image with built ROS packages
+# Bring in ROS dependencies but don't buil
 #====================================================================
-# dockerfile_lint - ignore
-FROM build_clone as arena_camera_ros
+#
+FROM clone as prebuild
 
 ARG WS_DIR
-LABEL Version=0.1
-LABEL Name=arena_camera_ros
-
 WORKDIR ${WS_DIR}/src
+
 RUN vcs import --shallow --skip-existing < arena_camera_ros/arena_camera_ros.repos
 
 WORKDIR ${WS_DIR}
@@ -112,6 +110,17 @@ WORKDIR ${WS_DIR}
 #                     --skip-keys=arena_sdk \
 #                     --from-paths src/ \
 #               && rm -rf /var/lib/apt/lists/*"
+
+
+#====================================================================
+# Final build
+#====================================================================
+#
+FROM prebuild as arena_camera_ros
+
+ARG WS_DIR
+LABEL Version=0.1
+LABEL Name=arena_camera_ros
 
 RUN bash -c "~/ros_entrypoint.sh \
                 catkin build"
