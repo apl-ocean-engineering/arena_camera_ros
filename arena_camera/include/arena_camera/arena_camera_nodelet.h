@@ -263,7 +263,6 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
                         size_t &reached_binning_x);
   bool setBinningYValue(const size_t &target_binning_y,
                         size_t &reached_binning_y);
-  void disableAllRunningAutoBrightessFunctions();
 
   ros::Publisher metadata_pub_, hdr_metadata_pub_;
 

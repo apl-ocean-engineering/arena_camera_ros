@@ -122,37 +122,6 @@ class ArenaCameraParameter {
   // ###################### Image Intensity Settings  ######################
   // #######################################################################
 
-  /**
-   * The average intensity value of the images. It depends on the exposure
-   * time as well as the gain setting. If 'exposure' is provided, the
-   * interface will try to reach the desired brightness by only varying the
-   * gain. (What may often fail, because the range of possible exposure
-   * values is many times higher than the gain range).
-   * If 'gain' is provided, the interface will try to reach the desired
-   * brightness by only varying the exposure time. If gain AND exposure are
-   * given, it is not possible to reach the brightness, because both are
-   * assumed to be fix.
-   */
-  int brightness_;
-
-  /**
-   * Flag which indicates if the average brightness is provided and hence
-   * should be set during startup
-   */
-  bool brightness_given_;
-
-  /**
-   * Only relevant, if 'brightness' is set as ros-parameter:
-   * The brightness_continuous flag controls the auto brightness function.
-   * If it is set to false, the brightness will only be reached once.
-   * Hence changing light conditions lead to changing brightness values.
-   * If it is set to true, the given brightness will be reached continuously,
-   * trying to adapt to changing light conditions. This is only possible for
-   * values in the possible auto range of the arena API which is
-   * e.g. [50 - 205] for acA2500-14um and acA1920-40gm
-   */
-  bool brightness_continuous_;
-
   bool enable_lut_;
 
   // #######################################################################

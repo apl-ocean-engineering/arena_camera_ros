@@ -773,7 +773,7 @@ void ArenaCameraNodeletBase::setExposure(
     }
 
   } catch (const GenICam::GenericException &e) {
-    NODELET_ERROR_STREAM("Caught exception while setting exposure damping: "
+    NODELET_ERROR_STREAM("Caught exception while setting auto-exposure gain: "
                          << e.GetDescription());
   }
 }
@@ -1171,25 +1171,6 @@ void ArenaCameraNodeletBase::setTargetBrightness(unsigned int brightness) {
 
   // if (was_streaming)
   //   startStreaming();
-}
-
-void ArenaCameraNodeletBase::disableAllRunningAutoBrightessFunctions() {
-  auto pNodeMap = pDevice_->GetNodeMap();
-  GenApi::CStringPtr pExposureAuto = pNodeMap->GetNode("ExposureAuto");
-  GenApi::CStringPtr pGainAuto = pNodeMap->GetNode("GainAuto");
-
-  if (!pExposureAuto || !GenApi::IsWritable(pExposureAuto) || !pGainAuto ||
-      !GenApi::IsWritable(pGainAuto)) {
-    NODELET_WARN_STREAM("Unable to disable auto gain & exposure");
-    return;
-  }
-
-  else {
-    Arena::SetNodeValue<GenICam::gcstring>(pDevice_->GetNodeMap(),
-                                           "ExposureAuto", "Off");
-    Arena::SetNodeValue<GenICam::gcstring>(pDevice_->GetNodeMap(), "GainAuto",
-                                           "Off");
-  }
 }
 
 //-------------------------------------------------------------------

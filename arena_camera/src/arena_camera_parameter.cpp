@@ -48,10 +48,6 @@ ArenaCameraParameter::ArenaCameraParameter()
       binning_x_(1), binning_y_(1),
       binning_x_given_(false), binning_y_given_(false),
       downsampling_factor_exp_search_(1),
-      // ##########################
-      brightness_(100),
-      brightness_given_(false),
-      brightness_continuous_(false),
       // #########################
       enable_lut_(false),
       mtu_size_(1400),
@@ -251,20 +247,11 @@ void ArenaCameraParameter::readFromRosParameterServer(
 }
 
 void ArenaCameraParameter::validateParameterSet(const ros::NodeHandle& nh) {
-  if (brightness_given_ && (brightness_ < 0.0 || brightness_ > 255)) {
-    ROS_WARN_STREAM("Desired brightness not in allowed range [0 - 255]! "
-                    << "Brightness = " << brightness_ << ". Will reset it to "
-                    << "default value!");
-    brightness_given_ = false;
-  }
-
   if (mtu_size_ < 1400) {
     ROS_WARN_STREAM("MTU packet size too small: " << mtu_size_);
   } else if (mtu_size_ > 11000) {
     ROS_WARN_STREAM("MTU packet size too large: " << mtu_size_);
   }
-
-  return;
 }
 
 std::string ArenaCameraParameter::shutterModeString() const {
