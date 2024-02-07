@@ -9,6 +9,16 @@ services:
     stdin_open: true
     tty: true
     network_mode: host
+
+  # Run with the local checkout bind-mounted into the workspace
+  build_local:
+    build:
+      dockerfile: Dockerfile
+      target: prebuild
+    image: ghcr.io/apl-ocean-engineering/arena_camera_ros/arena_camera_ros:build-local-latest
+    stdin_open: true
+    tty: true
+    network_mode: host
     volumes:
       - type: bind
         source: ..
