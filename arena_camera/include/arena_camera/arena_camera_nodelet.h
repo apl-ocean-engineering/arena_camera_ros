@@ -147,7 +147,7 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   //                   for the auto-exposure algorithm
   void setExposure(AutoExposureMode exp_mode, float exposure_ms);
 
-  void setExposureDamping(float exposure_damping);
+  void setAutoExposureGain(float exposure_damping);
 
   /// Return current camera ExposureTime
   /// @param immediate If true, will directly query the camera. Otherwise uses a
