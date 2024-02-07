@@ -523,7 +523,7 @@ void ArenaCameraNodeletBase::stopStreaming() {
 // Get/set frame rate
 
 // Note that streaming must be stopped before updating frame rate
-void ArenaCameraNodeletBase::updateFrameRate() {
+void ArenaCameraNodeletBase::updateFrameRate(float frame_rate) {
   try {
     ros::NodeHandle nh = getNodeHandle();
     auto pNodeMap = pDevice_->GetNodeMap();
@@ -531,7 +531,7 @@ void ArenaCameraNodeletBase::updateFrameRate() {
     // const bool was_streaming = is_streaming_;
     // stopStreaming();
 
-    auto cmdlnParamFrameRate = arena_camera_parameter_set_.frameRate();
+    auto cmdlnParamFrameRate = frame_rate;
     auto currentFrameRate =
         Arena::GetNodeValue<double>(pNodeMap, "AcquisitionFrameRate");
     auto maximumFrameRate =
@@ -539,8 +539,7 @@ void ArenaCameraNodeletBase::updateFrameRate() {
 
     // requested framerate larger than device max so we trancate it
     if (cmdlnParamFrameRate >= maximumFrameRate) {
-      arena_camera_parameter_set_.setFrameRate(maximumFrameRate);
-
+      frame_rate = maximumFrameRate;
       NODELET_WARN(
           "Desired framerate %.2f Hz (rounded) is higher than max possible. "
           "Will limit "
@@ -559,8 +558,7 @@ void ArenaCameraNodeletBase::updateFrameRate() {
     else if (cmdlnParamFrameRate ==
              -1)  // speacial for max frame rate available
     {
-      arena_camera_parameter_set_.setFrameRate(maximumFrameRate);
-
+      frame_rate = maximumFrameRate;
       NODELET_WARN("Framerate is set to device max : %.2f Hz",
                    maximumFrameRate);
     }
@@ -572,8 +570,7 @@ void ArenaCameraNodeletBase::updateFrameRate() {
             "\"AcquisitionFrameRateEnable\" not true, trying to enable");
         Arena::SetNodeValue<bool>(pNodeMap, "AcquisitionFrameRateEnable", true);
       }
-      Arena::SetNodeValue<double>(pNodeMap, "AcquisitionFrameRate",
-                                  arena_camera_parameter_set_.frameRate());
+      Arena::SetNodeValue<double>(pNodeMap, "AcquisitionFrameRate", frame_rate);
     } catch (GenICam::GenericException &e) {
       NODELET_INFO_STREAM("Exception while changing frame rate: " << e.what());
     }
@@ -1261,16 +1258,8 @@ void ArenaCameraNodeletBase::reconfigureCallback(ArenaCameraConfig &config,
   // -- The following params require stopping streaming, only set if needed --
   if (config.frame_rate != previous_config_.frame_rate) {
     ROS_INFO_STREAM("Setting frame rate to " << config.frame_rate);
-    arena_camera_parameter_set_.setFrameRate(config.frame_rate);
-    updateFrameRate();
+    updateFrameRate(config.frame_rate);
   }
-
-  setTargetBrightness(config.target_brightness);
-
-  arena_camera_parameter_set_.exposure_auto_ = config.auto_exposure;
-  arena_camera_parameter_set_.exposure_ms_ = config.exposure_ms;
-  arena_camera_parameter_set_.auto_exposure_max_ms_ =
-      config.auto_exposure_max_ms;
 
   if (config.auto_exposure) {
     setExposure(ArenaCameraNodeletBase::AutoExposureMode::Continuous,
@@ -1281,15 +1270,29 @@ void ArenaCameraNodeletBase::reconfigureCallback(ArenaCameraConfig &config,
                 config.exposure_ms);
   }
 
-  arena_camera_parameter_set_.gain_auto_ = config.auto_gain;
-  if (arena_camera_parameter_set_.gain_auto_) {
+  if (config.auto_gain) {
     setGain(ArenaCameraNodeletBase::AutoGainMode::Continuous);
   } else {
     setGain(ArenaCameraNodeletBase::AutoGainMode::Off, config.gain);
   }
 
-  arena_camera_parameter_set_.gamma_ = config.gamma;
-  setGamma(arena_camera_parameter_set_.gamma_);
+  if ((config.auto_gain != previous_config_.auto_gain) ||
+      (config.auto_exposure != previous_config_.auto_exposure) ||
+      (config.target_brightness != previous_config_.target_brightness)) {
+    const auto canAutoBrightness = (config.auto_gain || config.auto_exposure);
+    if (!canAutoBrightness) {
+      ROS_WARN_STREAM(
+          "Neither auto_gain or exposure_auto are set, so the brightness "
+          "target ("
+          << config.target_brightness << ") will be "
+          << "ignored!");
+    }
+    setTargetBrightness(config.target_brightness);
+  }
+
+  if (config.gamma != previous_config_.gamma) {
+    setGamma(config.gamma);
+  }
 
   if ((level >= stop_level) && was_streaming) {
     ROS_DEBUG("   ... restarting camera after reconfigure");

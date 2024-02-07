@@ -91,9 +91,9 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   /// Getter for the current frame rate
   /// @return the desired frame rate.
   ///
-  const double &frameRate() const {
-    return arena_camera_parameter_set_.frameRate();
-  }
+  // const double &frameRate() const {
+  //   return arena_camera_parameter_set_.frameRate();
+  // }
 
   /// Getter for the tf frame.
   /// @return the camera frame.
@@ -133,7 +133,8 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   // === Functions to get/set Frame Rate ===
 
-  void updateFrameRate();
+  float currentFrameRate();
+  void updateFrameRate(float frame_rate);
 
   //==== Functions to get/set exposure ====
 

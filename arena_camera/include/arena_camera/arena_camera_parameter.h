@@ -80,18 +80,8 @@ class ArenaCameraParameter {
   // Getter for the camera_frame_ set from ros-parameter server
   const std::string &cameraFrame() const { return camera_frame_; }
 
-  // Getter for the frame_rate_ read from ros-parameter server
-  const double &frameRate() const { return frame_rate_; }
-
   // Getter for the image_encoding_ read from ros-parameter server
   const std::string &imageEncoding() const { return image_encoding_; }
-
-  /**
-   * Setter for the frame_rate_ initially set from ros-parameter server
-   * The frame rate needs to be updated with the value the camera supports
-   */
-  // void setFrameRate(const ros::NodeHandle& nh, const double& frame_rate);
-  void setFrameRate(const double &frame_rate);
 
   // Getter for the camera_info_url set from ros-parameter server
   const std::string &cameraInfoURL() const { return camera_info_url_; }
@@ -131,37 +121,6 @@ class ArenaCameraParameter {
   // #######################################################################
   // ###################### Image Intensity Settings  ######################
   // #######################################################################
-  // The following settings do *NOT* have to be set. Each camera has default
-  // values which provide an automatic image adjustment
-  // If one would like to adjust image brightness, it is not
-  // #######################################################################
-
-  /**
-   * The target gain in percent of the maximal value the camera supports
-   * For USB-Cameras, the gain is in dB, for GigE-Cameras it is given in so
-   * called 'device specific units'.
-   */
-  double gain_;
-
-  /**
-   * Flag which indicates if the gain value is provided and hence should be
-   * set during startup
-   */
-  bool gain_given_;
-
-  /**
-   * Gamma correction of pixel intensity.
-   * Adjusts the brightness of the pixel values output by the camera's sensor
-   * to account for a non-linearity in the human perception of brightness or
-   * of the display system (such as CRT).
-   */
-  double gamma_;
-
-  /**
-   * Flag which indicates if the gamma correction value is provided and
-   * hence should be set during startup
-   */
-  bool gamma_given_;
 
   /**
    * The average intensity value of the images. It depends on the exposure
@@ -194,25 +153,9 @@ class ArenaCameraParameter {
    */
   bool brightness_continuous_;
 
-  /**
-   * Only relevant, if 'brightness' is given as ros-parameter:
-   * If the camera should try to reach and / or keep the brightness, hence
-   * adapting to changing light conditions, at least one of the following
-   * flags must be set. If both are set, the interface will use the profile
-   * that tries to keep the  gain at minimum to reduce white noise.
-   * The exposure_auto flag indicates, that the desired brightness will
-   * be reached by adapting the exposure time.
-   * The gain_auto flag indicates, that the desired brightness will be
-   * reached by adapting the gain.
-   */
-  bool exposure_auto_;
-  bool gain_auto_;
-
   bool enable_lut_;
-  // #######################################################################
 
-  double exposure_ms_;
-  double auto_exposure_max_ms_;
+  // #######################################################################
 
   /**
    * The MTU size. Only used for GigE cameras.
@@ -280,13 +223,6 @@ class ArenaCameraParameter {
   std::string device_user_id_;
 
   std::string serial_number_;
-
-  /**
-   * The desired publisher frame rate if listening to the topics.
-   * This parameter can only be set once at startup
-   * Calling the GrabImages-Action can result in a higher framerate
-   */
-  double frame_rate_;
 
   /**
    * The CameraInfo URL (Uniform Resource Locator) where the optional
