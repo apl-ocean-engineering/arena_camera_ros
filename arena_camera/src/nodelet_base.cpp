@@ -773,6 +773,28 @@ void ArenaCameraNodeletBase::setExposure(
   }
 }
 
+void ArenaCameraNodeletBase::setExposureDamping(float exposure_damping) {
+  try {
+    auto pNodeMap = pDevice_->GetNodeMap();
+
+    GenApi::CFloatPtr pExposureDamping =
+        pDevice_->GetNodeMap()->GetNode("ExposureAutoDamping");
+    if (GenApi::IsWritable(pExposureDamping)) {
+      // The parameter in the camera is in us
+      pExposureDamping->SetValue(exposure_damping);
+    } else {
+      NODELET_INFO("ExposureAutoDamping is not writeable");
+    }
+
+    NODELET_INFO_STREAM(
+        "Set autoexposure damping to  "
+        << Arena::GetNodeValue<double>(pNodeMap, "ExposureAutoDamping"));
+  } catch (const GenICam::GenericException &e) {
+    NODELET_ERROR_STREAM("Caught exception while setting exposure damping: "
+                         << e.GetDescription());
+  }
+}
+
 //===================================================================
 //
 // Get/set gain
@@ -1233,6 +1255,7 @@ void ArenaCameraNodeletBase::reconfigureCallback(ArenaCameraConfig &config,
   if (config.auto_exposure) {
     setExposure(ArenaCameraNodeletBase::AutoExposureMode::Continuous,
                 config.auto_exposure_max_ms);
+    setExposureDamping(config.auto_exposure_damping);
   } else {
     setExposure(ArenaCameraNodeletBase::AutoExposureMode::Off,
                 config.exposure_ms);
