@@ -709,67 +709,97 @@ void ArenaCameraNodeletBase::onExposureChangeCallback(GenApi::INode *pNode) {
 
 void ArenaCameraNodeletBase::setExposure(
     ArenaCameraNodeletBase::AutoExposureMode exp_mode, float exposure_ms) {
-  auto pNodeMap = pDevice_->GetNodeMap();
-  // exposure_auto_ will be already set to false if exposure_given_ is true
-  // read params () solved the priority between them
-  if (exp_mode == ArenaCameraNodeletBase::AutoExposureMode::Off) {
-    Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "ExposureAuto", "Off");
+  try {
+    auto pNodeMap = pDevice_->GetNodeMap();
+    // exposure_auto_ will be already set to false if exposure_given_ is true
+    // read params () solved the priority between them
+    if (exp_mode == ArenaCameraNodeletBase::AutoExposureMode::Off) {
+      Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "ExposureAuto", "Off");
 
-    GenApi::CFloatPtr pExposureTime =
-        pDevice_->GetNodeMap()->GetNode("ExposureTime");
+      GenApi::CFloatPtr pExposureTime =
+          pDevice_->GetNodeMap()->GetNode("ExposureTime");
 
-    float exposure_to_set = exposure_ms * 1000;
-    if (exposure_to_set < pExposureTime->GetMin()) {
-      NODELET_WARN_STREAM("Desired exposure ("
-                          << exposure_to_set << ") "
-                          << "time unreachable! Setting to lower limit: "
-                          << pExposureTime->GetMin());
-      exposure_to_set = pExposureTime->GetMin();
-    } else if (exposure_to_set > pExposureTime->GetMax()) {
-      NODELET_WARN_STREAM("Desired exposure ("
-                          << exposure_to_set << ") "
-                          << "time unreachable! Setting to upper limit: "
-                          << pExposureTime->GetMax());
-      exposure_to_set = pExposureTime->GetMax();
-    }
-
-    pExposureTime->SetValue(exposure_to_set);
-
-    NODELET_INFO_STREAM("Setting auto-exposure _off_ with exposure of "
-                        << pExposureTime->GetValue() << " ms");
-  } else {
-    if (exp_mode == ArenaCameraNodeletBase::AutoExposureMode::Once) {
-      NODELET_INFO_STREAM("Setting auto-exposure to _on_ / Once");
-      Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "ExposureAuto", "Once");
-    } else {
-      NODELET_INFO_STREAM("Setting auto-exposure to _on_ / Continuous");
-      Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "ExposureAuto",
-                                             "Continuous");
-    }
-
-    if (exposure_ms > 0) {
-      Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "ExposureAutoLimitAuto",
-                                             "Off");
-      GenApi::CFloatPtr pExposureUpperLimit =
-          pDevice_->GetNodeMap()->GetNode("ExposureAutoUpperLimit");
-      if (GenApi::IsWritable(pExposureUpperLimit)) {
-        // The parameter in the camera is in us
-        pExposureUpperLimit->SetValue(static_cast<int64_t>(exposure_ms) * 1000);
-      } else {
-        NODELET_INFO("ExposureAutoUpperLimit is not writeable");
+      float exposure_to_set = exposure_ms * 1000;
+      if (exposure_to_set < pExposureTime->GetMin()) {
+        NODELET_WARN_STREAM("Desired exposure ("
+                            << exposure_to_set << ") "
+                            << "time unreachable! Setting to lower limit: "
+                            << pExposureTime->GetMin());
+        exposure_to_set = pExposureTime->GetMin();
+      } else if (exposure_to_set > pExposureTime->GetMax()) {
+        NODELET_WARN_STREAM("Desired exposure ("
+                            << exposure_to_set << ") "
+                            << "time unreachable! Setting to upper limit: "
+                            << pExposureTime->GetMax());
+        exposure_to_set = pExposureTime->GetMax();
       }
 
+      pExposureTime->SetValue(exposure_to_set);
+
+      NODELET_INFO_STREAM("Setting auto-exposure _off_ with exposure of "
+                          << pExposureTime->GetValue() << " ms");
     } else {
-      // Use automatic auto-exposure limits
-      Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "ExposureAutoLimitAuto",
-                                             "Continuous");
+      if (exp_mode == ArenaCameraNodeletBase::AutoExposureMode::Once) {
+        NODELET_INFO_STREAM("Setting auto-exposure to _on_ / Once");
+        Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "ExposureAuto",
+                                               "Once");
+      } else {
+        NODELET_INFO_STREAM("Setting auto-exposure to _on_ / Continuous");
+        Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "ExposureAuto",
+                                               "Continuous");
+      }
+
+      if (exposure_ms > 0) {
+        Arena::SetNodeValue<GenICam::gcstring>(pNodeMap,
+                                               "ExposureAutoLimitAuto", "Off");
+        GenApi::CFloatPtr pExposureUpperLimit =
+            pDevice_->GetNodeMap()->GetNode("ExposureAutoUpperLimit");
+        if (GenApi::IsWritable(pExposureUpperLimit)) {
+          // The parameter in the camera is in us
+          pExposureUpperLimit->SetValue(static_cast<int64_t>(exposure_ms) *
+                                        1000);
+        } else {
+          NODELET_INFO("ExposureAutoUpperLimit is not writeable");
+        }
+
+      } else {
+        // Use automatic auto-exposure limits
+        Arena::SetNodeValue<GenICam::gcstring>(
+            pNodeMap, "ExposureAutoLimitAuto", "Continuous");
+      }
+
+      NODELET_INFO_STREAM(
+          "Enabling autoexposure with limits "
+          << Arena::GetNodeValue<double>(pNodeMap, "ExposureAutoLowerLimit")
+          << " to "
+          << Arena::GetNodeValue<double>(pNodeMap, "ExposureAutoUpperLimit"));
+    }
+
+  } catch (const GenICam::GenericException &e) {
+    NODELET_ERROR_STREAM("Caught exception while setting exposure damping: "
+                         << e.GetDescription());
+  }
+}
+
+void ArenaCameraNodeletBase::setAutoExposureGain(float exposure_gain) {
+  auto pNodeMap = pDevice_->GetNodeMap();
+
+  try {
+    GenApi::CFloatPtr pExposureDamping =
+        pNodeMap->GetNode("ExposureAutoDamping");
+
+    if (GenApi::IsWritable(pExposureDamping)) {
+      pExposureDamping->SetValue(exposure_gain);
+    } else {
+      NODELET_INFO("ExposureAutoDamping is not writeable");
     }
 
     NODELET_INFO_STREAM(
-        "Enabling autoexposure with limits "
-        << Arena::GetNodeValue<double>(pNodeMap, "ExposureAutoLowerLimit")
-        << " to "
-        << Arena::GetNodeValue<double>(pNodeMap, "ExposureAutoUpperLimit"));
+        "Set autoexposure damping to  "
+        << Arena::GetNodeValue<double>(pNodeMap, "ExposureAutoDamping"));
+  } catch (const GenICam::GenericException &e) {
+    NODELET_ERROR_STREAM("Caught exception while setting exposure damping: "
+                         << e.GetDescription());
   }
 }
 
@@ -782,7 +812,8 @@ float ArenaCameraNodeletBase::currentGain(bool immediate) {
     try {
       return Arena::GetNodeValue<double>(pDevice_->GetNodeMap(), "Gain");
     } catch (const GenICam::GenericException &e) {
-      NODELET_WARN_STREAM("Unable to read exposure time");
+      NODELET_WARN_STREAM(
+          "Exception whie querying gain: " << e.GetDescription());
       return -1.0;
     }
   } else {
@@ -794,7 +825,8 @@ void ArenaCameraNodeletBase::onGainChangeCallback(GenApi::INode *pNode) {
   try {
     cached_gain_ = Arena::GetNodeValue<double>(pDevice_->GetNodeMap(), "Gain");
   } catch (const GenICam::GenericException &e) {
-    ;
+    NODELET_WARN_STREAM(
+        "Exception whie updating cached gain: " << e.GetDescription());
   }
 }
 
@@ -838,7 +870,6 @@ bool ArenaCameraNodeletBase::setGain(
       Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "GainAuto",
                                              "Continuous");
       NODELET_INFO_STREAM("Setting auto-gain to _on_ / Continuous");
-    } else {
     }
 
   } catch (const GenICam::GenericException &e) {
@@ -856,22 +887,33 @@ bool ArenaCameraNodeletBase::setGain(
 float ArenaCameraNodeletBase::currentGamma() {
   GenApi::CFloatPtr pGamma = pDevice_->GetNodeMap()->GetNode("Gamma");
 
-  if (!pGamma || !GenApi::IsReadable(pGamma)) {
-    NODELET_WARN_STREAM("No gamma value, returning -1");
-    return -1.;
-  } else {
-    float gammaValue = pGamma->GetValue();
-    return gammaValue;
+  try {
+    if (!pGamma || !GenApi::IsReadable(pGamma)) {
+      NODELET_WARN_STREAM("No gamma value, returning -1");
+      return -1.;
+    } else {
+      float gammaValue = pGamma->GetValue();
+      return gammaValue;
+    }
+  } catch (const GenICam::GenericException &e) {
+    NODELET_ERROR_STREAM(
+        "Caught exception while querying gamma: " << e.GetDescription());
+    return false;
   }
 }
 
 bool ArenaCameraNodeletBase::setGamma(const float &target_gamma) {
   // for GigE cameras you have to enable gamma first
+  try {
+    GenApi::CBooleanPtr pGammaEnable =
+        pDevice_->GetNodeMap()->GetNode("GammaEnable");
+    if (GenApi::IsWritable(pGammaEnable)) {
+      pGammaEnable->SetValue(true);
+    }
 
-  GenApi::CBooleanPtr pGammaEnable =
-      pDevice_->GetNodeMap()->GetNode("GammaEnable");
-  if (GenApi::IsWritable(pGammaEnable)) {
-    pGammaEnable->SetValue(true);
+  } catch (const GenICam::GenericException &e) {
+    NODELET_ERROR_STREAM(
+        "Caught exception while querying gamma: " << e.GetDescription());
   }
 
   GenApi::CFloatPtr pGamma = pDevice_->GetNodeMap()->GetNode("Gamma");
@@ -1233,6 +1275,7 @@ void ArenaCameraNodeletBase::reconfigureCallback(ArenaCameraConfig &config,
   if (config.auto_exposure) {
     setExposure(ArenaCameraNodeletBase::AutoExposureMode::Continuous,
                 config.auto_exposure_max_ms);
+    setAutoExposureGain(config.auto_exposure_gain);
   } else {
     setExposure(ArenaCameraNodeletBase::AutoExposureMode::Off,
                 config.exposure_ms);
