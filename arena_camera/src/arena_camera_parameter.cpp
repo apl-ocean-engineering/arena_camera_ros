@@ -147,6 +147,8 @@ void ArenaCameraParameter::readFromRosParameterServer(
     // " Will not set encoding"); 	encoding = std::string("");
     // }
     image_encoding_ = encoding;
+
+    ROS_INFO_STREAM("Setting image encoding: " << image_encoding_);
   }
 
   // ##########################

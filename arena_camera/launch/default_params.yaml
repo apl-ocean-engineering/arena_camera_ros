@@ -8,11 +8,12 @@ camera_frame: arena_camera
 #  device list will be used.  If specified, device_user_id takes precedence
 #  over serial_number.   If neither is specified, the system users the
 #  first auto-detected camera.
+#
 #device_user_id: ""
 
 #  Serial number of camera to look for.
 #
-#serial_number: ""
+#serial_number: "12345"
 
 #  The CameraInfo URL (Uniform Resource Locator) where the optional intrinsic
 #  camera calibration parameters are stored. This URL string will be parsed
@@ -40,7 +41,7 @@ camera_info_url: ""
 #  The desired publisher frame rate if listening to the topics.
 #  This parameter can only be set once at startup
 #  Calling the GrabImages-Action can result in a higher framerate
-frame_rate: 2.0
+frame_rate: 3.0
 
 #  Mode of camera's shutter.
 #  The supported modes are "rolling", "global" and "global_reset"

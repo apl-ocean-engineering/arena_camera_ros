@@ -92,6 +92,73 @@ void ArenaCameraNodeletBase::onInit() {
   camera_info_manager_ =
       std::make_shared<camera_info_manager::CameraInfoManager>(nh);
 
+  // Initialize parameters from parameter server
+  arena_camera_parameter_set_.readFromRosParameterServer(pnh);
+
+  try {
+    // Open the Arena SDK
+    pSystem_ = Arena::OpenSystem();
+    pSystem_->UpdateDevices(100);
+    if (pSystem_->GetDevices().size() == 0) {
+      NODELET_FATAL("Did not detect any cameras!!");
+      return;
+    }
+
+    NODELET_WARN("Looking for camera!");
+
+    if (!arena_camera_parameter_set_.deviceUserID().empty()) {
+      if (!registerCameraByUserId(arena_camera_parameter_set_.deviceUserID())) {
+        NODELET_FATAL_STREAM("Unable to find a camera with DeviceUserId \""
+                             << arena_camera_parameter_set_.deviceUserID()
+                             << "\"");
+        return;
+      }
+    } else if (!arena_camera_parameter_set_.serialNumber().empty()) {
+      if (!registerCameraBySerialNumber(
+              arena_camera_parameter_set_.serialNumber())) {
+        NODELET_FATAL_STREAM("Unable to find a camera with Serial Number "
+                             << arena_camera_parameter_set_.serialNumber());
+        return;
+      }
+    } else {
+      if (!registerCameraByAuto()) {
+        NODELET_FATAL_STREAM("Unable to find any cameras to register");
+        return;
+      }
+    }
+
+    NODELET_WARN("Found camera!");
+
+    // Validate that the camera is from Lucid (otherwise the Arena SDK
+    // will segfault)
+    assert(pDevice_);
+    const auto device_vendor_name = Arena::GetNodeValue<GenICam::gcstring>(
+        pDevice_->GetNodeMap(), "DeviceVendorName");
+
+    NODELET_WARN_STREAM("DeviceVendorName: " << device_vendor_name);
+
+    if (device_vendor_name != "Lucid Vision Labs") {
+      NODELET_FATAL_STREAM(
+          "Hm, this doesn't appear to be a Lucid Vision camera, got vendor "
+          "name: "
+          << device_vendor_name);
+    }
+
+    NODELET_INFO("Configurating camera...");
+    if (!configureCamera()) {
+      NODELET_FATAL_STREAM("Unable to configure camera");
+      return;
+    }
+
+  } catch (GenICam::GenericException &e) {
+    NODELET_ERROR_STREAM(
+        "Error while initializing camera: " << e.GetDescription());
+    return;
+  }
+
+  NODELET_INFO("Successfully initialized");
+  onSuccessfulInit();
+
   diagnostics_updater_.setHardwareID("none");
   diagnostics_updater_.add(
       "camera_availability",
@@ -100,58 +167,9 @@ void ArenaCameraNodeletBase::onInit() {
   diagnostics_updater_.add(
       "intrinsic_calibration", this,
       &ArenaCameraNodeletBase::create_camera_info_diagnostics);
-  diagnostics_trigger_ = nh.createTimer(
-      ros::Duration(2),
-      [&](const ros::TimerEvent &) { diagnostics_updater_.update(); });
-
-  // Initialize parameters from parameter server
-  arena_camera_parameter_set_.readFromRosParameterServer(pnh);
-
-  // Open the Arena SDK
-  pSystem_ = Arena::OpenSystem();
-  pSystem_->UpdateDevices(100);
-  if (pSystem_->GetDevices().size() == 0) {
-    NODELET_FATAL("Did not detect any cameras!!");
-    return;
-  }
-
-  if (!arena_camera_parameter_set_.deviceUserID().empty()) {
-    if (!registerCameraByUserId(arena_camera_parameter_set_.deviceUserID())) {
-      NODELET_FATAL_STREAM("Unable to find a camera with DeviceUserId \""
-                           << arena_camera_parameter_set_.deviceUserID()
-                           << "\"");
-      return;
-    }
-  } else if (!arena_camera_parameter_set_.serialNumber().empty()) {
-    if (!registerCameraBySerialNumber(
-            arena_camera_parameter_set_.serialNumber())) {
-      NODELET_FATAL_STREAM("Unable to find a camera with Serial Number "
-                           << arena_camera_parameter_set_.serialNumber());
-      return;
-    }
-  } else {
-    if (!registerCameraByAuto()) {
-      NODELET_FATAL_STREAM("Unable to find any cameras to register");
-      return;
-    }
-  }
-
-  // Validate that the camera is from Lucid (otherwise the Arena SDK
-  // will segfault)
-  const auto device_vendor_name = Arena::GetNodeValue<GenICam::gcstring>(
-      pDevice_->GetNodeMap(), "DeviceVendorName");
-  if (device_vendor_name != "Lucid Vision Labs") {
-    NODELET_FATAL_STREAM(
-        "Hm, this doesn't appear to be a Lucid Vision camera, got vendor name: "
-        << device_vendor_name);
-  }
-
-  if (!configureCamera()) {
-    NODELET_FATAL_STREAM("Unable to configure camera");
-    return;
-  }
-
-  onSuccessfulInit();
+  // diagnostics_trigger_ = nh.createTimer(
+  //     ros::Duration(2),
+  //     [&](const ros::TimerEvent &) { diagnostics_updater_.update(); });
 
   // This all feel a bit adhoc
   //
@@ -177,7 +195,7 @@ bool ArenaCameraNodeletBase::registerCameraByUserId(
   std::vector<Arena::DeviceInfo> deviceInfos = pSystem_->GetDevices();
   ROS_ASSERT(deviceInfos.size() > 0);
 
-  NODELET_INFO_STREAM("Connecting to camera with DeviceUserId"
+  NODELET_INFO_STREAM("Trying to connect to camera with DeviceUserId"
                       << device_user_id_to_open);
 
   std::vector<Arena::DeviceInfo>::iterator it;
@@ -207,7 +225,7 @@ bool ArenaCameraNodeletBase::registerCameraBySerialNumber(
   std::vector<Arena::DeviceInfo> deviceInfos = pSystem_->GetDevices();
   ROS_ASSERT(deviceInfos.size() > 0);
 
-  NODELET_INFO_STREAM("Connecting to camera with Serial Number "
+  NODELET_INFO_STREAM("Trying to connect to camera with Serial Number "
                       << serial_number);
 
   for (auto &dev : deviceInfos) {
@@ -290,6 +308,20 @@ bool ArenaCameraNodeletBase::configureCamera() {
       } else {
         NODELET_INFO(" -> Camera MTU is not writeable");
       }
+
+      auto interPacketDelay = pNodeMap->GetNode("GevSCPD");
+      if (GenApi::IsWritable(pPacketSize)) {
+        NODELET_INFO_STREAM(" -> Setting inter-packet delay to "
+                            << arena_camera_parameter_set_.inter_pkg_delay_
+                            << " ns");
+        Arena::SetNodeValue<int64_t>(
+            pNodeMap, "GevSCPD", arena_camera_parameter_set_.inter_pkg_delay_);
+      } else {
+        NODELET_WARN_STREAM(" -> Camera inter-packet delay is not writeable");
+      }
+      NODELET_INFO_STREAM("       Real inter-packet delay read from camera "
+                          << Arena::GetNodeValue<int64_t>(pNodeMap, "GevSCPD")
+                          << " ns");
     }
 
     auto payloadSize = Arena::GetNodeValue<int64_t>(pNodeMap, "PayloadSize");
@@ -1183,6 +1215,7 @@ void ArenaCameraNodeletBase::reconfigureCallback(ArenaCameraConfig &config,
 
   // -- The following params require stopping streaming, only set if needed --
   if (config.frame_rate != previous_config_.frame_rate) {
+    ROS_INFO_STREAM("Setting frame rate to " << config.frame_rate);
     arena_camera_parameter_set_.setFrameRate(config.frame_rate);
     updateFrameRate();
   }
