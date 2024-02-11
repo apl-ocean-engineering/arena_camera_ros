@@ -133,8 +133,8 @@ void ArenaCameraNodeletBase::onInit() {
 
     NODELET_WARN("Found camera!");
 
-    // Validate that the camera is from Lucid (otherwise the Arena SDK
-    // will segfault)
+    // Validate that the camera is from Lucid
+    // (otherwise the Arena SDK will segfault)
     assert(pDevice_);
     const auto device_vendor_name = Arena::GetNodeValue<GenICam::gcstring>(
         pDevice_->GetNodeMap(), "DeviceVendorName");
@@ -143,7 +143,8 @@ void ArenaCameraNodeletBase::onInit() {
 
     if (device_vendor_name != "Lucid Vision Labs") {
       NODELET_FATAL_STREAM(
-          "Hm, this doesn't appear to be a Lucid Vision camera, got vendor "
+          "Hm, this doesn't appear to be a Lucid Vision camera, instead got "
+          "vendor "
           "name: "
           << device_vendor_name);
     }
@@ -171,14 +172,11 @@ void ArenaCameraNodeletBase::onInit() {
   diagnostics_updater_.add(
       "intrinsic_calibration", this,
       &ArenaCameraNodeletBase::create_camera_info_diagnostics);
-  // diagnostics_trigger_ = nh.createTimer(
-  //     ros::Duration(2),
-  //     [&](const ros::TimerEvent &) { diagnostics_updater_.update(); });
 
   // This all feel a bit adhoc
   //
   // It's weird that we can subscribe to gain and exposure, but don't actually
-  // get updates without a "poll"
+  // get updates without calling "poll"
   const int poll_ms = 100;
   camera_poll_timer_ = nh.createTimer(
       ros::Duration(poll_ms * (1.0 / 1000.0)),
@@ -196,17 +194,15 @@ void ArenaCameraNodeletBase::onInit() {
 bool ArenaCameraNodeletBase::registerCameraByUserId(
     const std::string &device_user_id_to_open) {
   ROS_ASSERT(pSystem_);
+
   std::vector<Arena::DeviceInfo> deviceInfos = pSystem_->GetDevices();
   ROS_ASSERT(deviceInfos.size() > 0);
 
   NODELET_INFO_STREAM("Trying to connect to camera with DeviceUserId"
                       << device_user_id_to_open);
 
-  std::vector<Arena::DeviceInfo>::iterator it;
-
   for (auto &dev : deviceInfos) {
     const std::string device_user_id(dev.UserDefinedName());
-    // Must be an exact match
     if (0 == device_user_id_to_open.compare(device_user_id)) {
       NODELET_INFO_STREAM("Found the desired camera with DeviceUserID "
                           << device_user_id_to_open << ": ");
@@ -226,6 +222,7 @@ bool ArenaCameraNodeletBase::registerCameraByUserId(
 bool ArenaCameraNodeletBase::registerCameraBySerialNumber(
     const std::string &serial_number) {
   ROS_ASSERT(pSystem_);
+
   std::vector<Arena::DeviceInfo> deviceInfos = pSystem_->GetDevices();
   ROS_ASSERT(deviceInfos.size() > 0);
 
@@ -251,6 +248,7 @@ bool ArenaCameraNodeletBase::registerCameraBySerialNumber(
 
 bool ArenaCameraNodeletBase::registerCameraByAuto() {
   ROS_ASSERT(pSystem_);
+
   std::vector<Arena::DeviceInfo> deviceInfos = pSystem_->GetDevices();
   ROS_ASSERT(deviceInfos.size() > 0);
 
@@ -305,9 +303,9 @@ bool ArenaCameraNodeletBase::configureCamera() {
       auto pPacketSize = pNodeMap->GetNode("DeviceStreamChannelPacketSize");
       if (GenApi::IsWritable(pPacketSize)) {
         NODELET_INFO_STREAM(" -> Setting MTU to "
-                            << arena_camera_parameter_set_.mtuSize());
+                            << arena_camera_parameter_set_.mtu_size_);
         Arena::SetNodeValue<int64_t>(pNodeMap, "DeviceStreamChannelPacketSize",
-                                     arena_camera_parameter_set_.mtuSize());
+                                     arena_camera_parameter_set_.mtu_size_);
       } else {
         NODELET_INFO(" -> Camera MTU is not writeable");
       }
@@ -429,18 +427,6 @@ bool ArenaCameraNodeletBase::configureCamera() {
                                            "StreamBufferHandlingMode",
                                            "NewestOnly");
 
-    // A number of runtime parameters are set immediately through dynamic
-    // reconfigure: gain, exposure, frame rate
-
-    // bool isTriggerArmed = false;
-
-    // if (GenApi::IsWritable(pTriggerMode)) {
-    //   do {
-    //     isTriggerArmed = Arena::GetNodeValue<bool>(pNodeMap, "TriggerArmed");
-    //   } while (isTriggerArmed == false);
-    //   // Arena::ExecuteNode(pNodeMap, "TriggerSoftware");
-    // }
-
     // Register callbacks for ExposureTime and Gain
     // what is this insanity, please learn about functionals
     {
@@ -484,19 +470,6 @@ bool ArenaCameraNodeletBase::configureCamera() {
                                            .c_str())
                         << "] name not valid for camera_info_manager");
   }
-
-  // NODELET_INFO("=== Startup settings ===");
-  // NODELET_INFO_STREAM("encoding = " << currentImageEncoding());
-  // NODELET_INFO_STREAM("binning = [" << currentBinningX() << " x "
-  //                                   << currentBinningY() << "]");
-  // NODELET_INFO_STREAM("exposure = " << currentExposure() << " us");
-  // NODELET_INFO_STREAM("gain = " << currentGain());
-  // NODELET_INFO_STREAM("gamma = " << currentGamma());
-  // NODELET_INFO_STREAM(
-  //     "shutter mode = " << arena_camera_parameter_set_.shutterModeString());
-  // NODELET_INFO("========================");
-
-  // pDevice_->RequeueBuffer(pImage_);
   return true;
 }
 
@@ -528,16 +501,13 @@ void ArenaCameraNodeletBase::updateFrameRate(float frame_rate) {
     ros::NodeHandle nh = getNodeHandle();
     auto pNodeMap = pDevice_->GetNodeMap();
 
-    // const bool was_streaming = is_streaming_;
-    // stopStreaming();
-
     auto cmdlnParamFrameRate = frame_rate;
     auto currentFrameRate =
         Arena::GetNodeValue<double>(pNodeMap, "AcquisitionFrameRate");
     auto maximumFrameRate =
         GenApi::CFloatPtr(pNodeMap->GetNode("AcquisitionFrameRate"))->GetMax();
 
-    // requested framerate larger than device max so we trancate it
+    // requested framerate larger than device max so we truncate it
     if (cmdlnParamFrameRate >= maximumFrameRate) {
       frame_rate = maximumFrameRate;
       NODELET_WARN(
@@ -553,11 +523,8 @@ void ArenaCameraNodeletBase::updateFrameRate(float frame_rate) {
     // close to device max
     else if (cmdlnParamFrameRate == maximumFrameRate) {
       NODELET_INFO("Framerate is %.2f Hz", cmdlnParamFrameRate);
-    }
-    // requested max frame rate
-    else if (cmdlnParamFrameRate ==
-             -1)  // speacial for max frame rate available
-    {
+    } else if (cmdlnParamFrameRate == -1) {
+      // special for max frame rate available
       frame_rate = maximumFrameRate;
       NODELET_WARN("Framerate is set to device max : %.2f Hz",
                    maximumFrameRate);
@@ -609,13 +576,14 @@ bool ArenaCameraNodeletBase::setImageEncoding(const std::string &ros_encoding) {
   std::string gen_api_encoding;
   bool conversion_found =
       encoding_conversions::ros2GenAPI(ros_encoding, gen_api_encoding);
+  auto pNodeMap = pDevice_->GetNodeMap();
+
   if (!conversion_found) {
     if (ros_encoding.empty()) {
       return false;
     } else {
       std::string fallbackPixelFormat =
-          Arena::GetNodeValue<GenICam::gcstring>(pDevice_->GetNodeMap(),
-                                                 "PixelFormat")
+          Arena::GetNodeValue<GenICam::gcstring>(pNodeMap, "PixelFormat")
               .c_str();
       NODELET_ERROR_STREAM(
           "Can't convert ROS encoding '"
@@ -625,12 +593,12 @@ bool ArenaCameraNodeletBase::setImageEncoding(const std::string &ros_encoding) {
       return false;
     }
   }
+
   try {
-    GenApi::CEnumerationPtr pPixelFormat =
-        pDevice_->GetNodeMap()->GetNode("PixelFormat");
+    GenApi::CEnumerationPtr pPixelFormat = pNodeMap->GetNode("PixelFormat");
     if (GenApi::IsWritable(pPixelFormat)) {
-      Arena::SetNodeValue<GenICam::gcstring>(
-          pDevice_->GetNodeMap(), "PixelFormat", gen_api_encoding.c_str());
+      Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "PixelFormat",
+                                             gen_api_encoding.c_str());
       if (currentImageEncoding() == "16UC3" ||
           currentImageEncoding() == "16UC4")
         NODELET_WARN_STREAM(
@@ -644,21 +612,11 @@ bool ArenaCameraNodeletBase::setImageEncoding(const std::string &ros_encoding) {
     return false;
   }
 
-  NODELET_INFO("Have configured image_encoding");
-
   if (arena_camera::encoding_conversions::isHDR(ros_encoding)) {
     NODELET_INFO_STREAM("Requested HDR encoding \""
                         << ros_encoding << "\", enabling HDR mode in camera");
 
     try {
-      auto pNodeMap = pDevice_->GetNodeMap();
-
-      // GenApi::CStringPtr pHDROutput = pNodeMap->GetNode("HDROutput");
-      // if (GenApi::IsWritable(pHDROutput)) {
-      //   Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "HDROutput",
-      //   "HDR");
-      // }
-
       // Enable HDR image enhancement
       Arena::SetNodeValue<bool>(pNodeMap, "HDRImageEnhancementEnable", true);
       Arena::SetNodeValue<bool>(pNodeMap, "HDRTuningEnable", false);
@@ -666,7 +624,7 @@ bool ArenaCameraNodeletBase::setImageEncoding(const std::string &ros_encoding) {
       Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "HDROutput", "HDR");
 
     } catch (GenICam::GenericException &e) {
-      NODELET_ERROR_STREAM("Error while configuring camera: "
+      NODELET_ERROR_STREAM("Error while configuring HDR modes: "
                            << e.GetDescription()
                            << ", is this camera capable of HDR?");
       return false;
@@ -708,6 +666,7 @@ void ArenaCameraNodeletBase::setExposure(
     ArenaCameraNodeletBase::AutoExposureMode exp_mode, float exposure_ms) {
   try {
     auto pNodeMap = pDevice_->GetNodeMap();
+
     // exposure_auto_ will be already set to false if exposure_given_ is true
     // read params () solved the priority between them
     if (exp_mode == ArenaCameraNodeletBase::AutoExposureMode::Off) {
@@ -792,11 +751,11 @@ void ArenaCameraNodeletBase::setAutoExposureGain(float exposure_gain) {
     }
 
     NODELET_INFO_STREAM(
-        "Set autoexposure damping to  "
+        "Set autoexposure gain to  "
         << Arena::GetNodeValue<double>(pNodeMap, "ExposureAutoDamping"));
   } catch (const GenICam::GenericException &e) {
-    NODELET_ERROR_STREAM("Caught exception while setting exposure damping: "
-                         << e.GetDescription());
+    NODELET_ERROR_STREAM(
+        "Caught exception while setting exposure gain: " << e.GetDescription());
   }
 }
 
@@ -810,7 +769,7 @@ float ArenaCameraNodeletBase::currentGain(bool immediate) {
       return Arena::GetNodeValue<double>(pDevice_->GetNodeMap(), "Gain");
     } catch (const GenICam::GenericException &e) {
       NODELET_WARN_STREAM(
-          "Exception whie querying gain: " << e.GetDescription());
+          "Caught exception whie querying gain: " << e.GetDescription());
       return -1.0;
     }
   } else {
@@ -823,7 +782,7 @@ void ArenaCameraNodeletBase::onGainChangeCallback(GenApi::INode *pNode) {
     cached_gain_ = Arena::GetNodeValue<double>(pDevice_->GetNodeMap(), "Gain");
   } catch (const GenICam::GenericException &e) {
     NODELET_WARN_STREAM(
-        "Exception whie updating cached gain: " << e.GetDescription());
+        "Caught exception whie updating cached gain: " << e.GetDescription());
   }
 }
 
@@ -871,7 +830,7 @@ bool ArenaCameraNodeletBase::setGain(
 
   } catch (const GenICam::GenericException &e) {
     NODELET_ERROR_STREAM(
-        "An exception while setting gain: " << e.GetDescription());
+        "Caught exception while setting gain: " << e.GetDescription());
     return false;
   }
   return true;
@@ -1147,9 +1106,6 @@ bool ArenaCameraNodeletBase::setBinningY(const size_t &target_binning_y,
 //~~ Brightness / auto controls ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 void ArenaCameraNodeletBase::setTargetBrightness(unsigned int brightness) {
-  // const bool was_streaming = is_streaming_;
-  // stopStreaming();
-
   try {
     GenApi::CIntegerPtr pTargetBrightness =
         pDevice_->GetNodeMap()->GetNode("TargetBrightness");
@@ -1168,9 +1124,6 @@ void ArenaCameraNodeletBase::setTargetBrightness(unsigned int brightness) {
     NODELET_ERROR_STREAM(
         "An exception while setting TargetBrightness: " << e.GetDescription());
   }
-
-  // if (was_streaming)
-  //   startStreaming();
 }
 
 //-------------------------------------------------------------------

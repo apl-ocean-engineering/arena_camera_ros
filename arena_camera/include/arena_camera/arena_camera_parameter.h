@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2023 University of Washington. All rights reserved.
  *
- * based on, with original license that follows
+ * based on original license that follows
  *
  * Copyright (C) 2016, Magazino GmbH. All rights reserved.
  *
@@ -69,8 +69,6 @@ class ArenaCameraParameter {
 
   /// Getter for the serial number param
   const std::string &serialNumber() const { return serial_number_; }
-
-  int mtuSize() const { return mtu_size_; }
 
   /**
    * Getter for the string describing the shutter mode
