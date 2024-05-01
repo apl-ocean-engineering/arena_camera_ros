@@ -5,7 +5,7 @@ services:
   arena_camera:
     build:
       dockerfile: Dockerfile
-    image: ghcr.io/apl-ocean-engineering/arena_camera_ros/arena_camera_ros:latest
+    image: ghcr.io/apl-ocean-engineering/arena_camera_ros:latest
     stdin_open: true
     tty: true
     network_mode: host
@@ -15,7 +15,7 @@ services:
     build:
       dockerfile: Dockerfile
       target: prebuild
-    image: ghcr.io/apl-ocean-engineering/arena_camera_ros/arena_camera_ros:build-local-latest
+    image: ghcr.io/apl-ocean-engineering/arena_camera_ros/build:latest
     stdin_open: true
     tty: true
     network_mode: host
