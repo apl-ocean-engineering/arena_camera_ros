@@ -51,7 +51,7 @@ jobs:
       #
       # Build CI image
       #
-      - name: Docker metadata for build image
+      - name: Docker metadata for CI image
         if: env.PUSH == 'true'
         id: ci_meta
         uses: docker/metadata-action@v4.6.0
@@ -96,4 +96,5 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           push: ${{ env.PUSH }}
+          platforms: linux/amd64,linux/arm64
           cache-from: type=gha
