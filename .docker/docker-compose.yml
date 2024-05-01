@@ -1,6 +1,5 @@
 ## Start a development stack with the current repo mounted into ros_ws/src/
 
-version: "3.9"
 services:
   arena_camera:
     build:
