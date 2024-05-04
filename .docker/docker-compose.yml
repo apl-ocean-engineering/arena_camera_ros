@@ -9,16 +9,18 @@ services:
     tty: true
     network_mode: host
 
-  # Run with the local checkout bind-mounted into the workspace
-  build_local:
+  # Prebuild includes rosdep and vcs import
+  # (basically, everything before "catkin build")
+  prebuild:
+    extends: arena_camera
     build:
-      dockerfile: Dockerfile
       target: prebuild
-    image: ghcr.io/apl-ocean-engineering/arena_camera_ros/build:latest
-    stdin_open: true
-    tty: true
-    network_mode: host
     command: /bin/bash
+
+  # Prebuild with _this_ copy of the repo mounted
+  #
+  build_local:
+    extends: prebuild
     volumes:
       - type: bind
         source: ..

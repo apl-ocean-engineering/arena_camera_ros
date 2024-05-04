@@ -99,6 +99,8 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   void stopStreaming();
 
  protected:
+  bool tryConnect();
+
   /**
    * Creates the camera instance either by UserDeviceId, SerialNumber,
    * or taking the first auto-detected camera.
