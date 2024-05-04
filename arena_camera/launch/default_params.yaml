@@ -4,6 +4,12 @@
 #  The tf frame under which the images were published
 camera_frame: arena_camera
 
+# Period for connection health check (in seconds)
+check_period_sec: 1.0
+
+# Period to retry connecting to camera, if connection fails (in seconds)
+retry_period_sec: 5.0
+
 #  The DeviceUserID of the camera. If empty, the first camera found in the
 #  device list will be used.  If specified, device_user_id takes precedence
 #  over serial_number.   If neither is specified, the system users the
@@ -13,7 +19,8 @@ camera_frame: arena_camera
 
 #  Serial number of camera to look for.
 #
-#serial_number: "12345"
+# If left empty, driver will user device_user_id or autodetect a camera
+#serial_number: "234200113"
 
 #  The CameraInfo URL (Uniform Resource Locator) where the optional intrinsic
 #  camera calibration parameters are stored. This URL string will be parsed

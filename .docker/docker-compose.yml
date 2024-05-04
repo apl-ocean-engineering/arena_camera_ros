@@ -13,6 +13,8 @@ services:
   # (basically, everything before "catkin build")
   prebuild:
     extends: arena_camera
+    # Local-only image
+    image: arena_camera_ros:prebuild
     build:
       target: prebuild
     command: /bin/bash

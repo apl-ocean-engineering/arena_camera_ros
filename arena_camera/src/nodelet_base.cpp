@@ -108,8 +108,18 @@ void ArenaCameraNodeletBase::onInit() {
   // Initialize parameters from parameter server
   arena_camera_parameter_set_.readFromRosParameterServer(pnh);
 
-  const ros::Duration camera_check_period(1.0);
-  const ros::Duration camera_retry_period(5.0);
+  float check_period_seconds, retry_period_seconds;
+if(!pnh.getParam("check_period_sec", check_period_seconds)) {
+  NODELET_FATAL("Param \"check_period_sec\" not supplied");
+  return;
+}
+if(!pnh.getParam("retry_period_sec", retry_period_seconds)) {
+  NODELET_FATAL("Param \"retry_period_sec\" not supplied");
+  return;
+}
+
+  const ros::Duration camera_check_period(check_period_seconds);
+  const ros::Duration camera_retry_period(retry_period_seconds);
 
   // This is the primary try-connect-catch-error-retry-state machine
   bool was_connected = false;
@@ -123,6 +133,10 @@ void ArenaCameraNodeletBase::onInit() {
     } else {
       if (was_connected) {
         NODELET_WARN("Connection dropped, grumble...");
+
+        if( camera_poll_timer_.isValid() ) {
+          camera_poll_timer_.stop();
+        }
       }
 
       was_connected = false;
@@ -145,7 +159,10 @@ void ArenaCameraNodeletBase::onInit() {
 bool ArenaCameraNodeletBase::tryConnect() {
   try {
     // Open the Arena SDK
-    pSystem_->UpdateDevices(100);
+    if(pSystem_->UpdateDevices(100)){
+      NODELET_INFO("Device list changed!");
+    }
+
     if (pSystem_->GetDevices().size() == 0) {
       NODELET_FATAL("Did not detect any cameras!!");
       return false;
@@ -224,7 +241,11 @@ bool ArenaCameraNodeletBase::tryConnect() {
   const int poll_ms = 100;
   camera_poll_timer_ = getNodeHandle().createTimer(
       ros::Duration(poll_ms * (1.0 / 1000.0)),
-      [&](const ros::TimerEvent &) { pDevice_->GetNodeMap()->Poll(poll_ms); });
+      [&](const ros::TimerEvent &) { try{pDevice_->GetNodeMap()->Poll(poll_ms);  } catch (GenICam::GenericException &e) {
+    NODELET_WARN_STREAM(
+        "Error while polling camera: " << e.GetDescription());
+    return;
+  } });
 
   _dynReconfigureServer =
       std::make_shared<DynReconfigureServer>(getPrivateNodeHandle());

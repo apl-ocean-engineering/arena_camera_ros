@@ -80,6 +80,8 @@ void ArenaCameraParameter::readFromRosParameterServer(
     nh.getParam("camera_info_url", camera_info_url_);
   }
 
+  ROS_WARN_STREAM("serial_number = " << serial_number_);
+
   binning_x_given_ = nh.hasParam("binning_x");
   if (binning_x_given_) {
     int binning_x;
