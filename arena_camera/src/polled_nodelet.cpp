@@ -46,7 +46,7 @@ ArenaCameraPolledNodelet::~ArenaCameraPolledNodelet() {}
 //
 // Nodelet::onInit  function
 
-void ArenaCameraPolledNodelet::onSuccessfulInit() {
+void ArenaCameraPolledNodelet::onCameraConnect() {
   try {
     pDevice_->StartStream();
   } catch (GenICam::GenericException &e) {

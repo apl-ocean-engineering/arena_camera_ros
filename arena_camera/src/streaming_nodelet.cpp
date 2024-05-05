@@ -53,7 +53,7 @@ ArenaCameraStreamingNodelet::~ArenaCameraStreamingNodelet() {
 //
 // Nodelet::onInit  function
 
-void ArenaCameraStreamingNodelet::onSuccessfulInit() {
+void ArenaCameraStreamingNodelet::onCameraConnect() {
   try {
     startStreaming();
   } catch (GenICam::GenericException &e) {
