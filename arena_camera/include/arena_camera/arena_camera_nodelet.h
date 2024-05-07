@@ -99,6 +99,8 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
   void stopStreaming();
 
  protected:
+  bool tryConnect();
+
   /**
    * Creates the camera instance either by UserDeviceId, SerialNumber,
    * or taking the first auto-detected camera.
@@ -116,7 +118,8 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   /// Virtual callback for node initialization _after_ Node::onInit()
   /// Only called if that initialization/configuration is successful.
-  virtual void onSuccessfulInit(){};
+  virtual void onCameraConnect(){};
+  virtual void onCameraDisconnect(){};
 
   // === Functions to set/get ImageEncoding ===
 
@@ -248,12 +251,10 @@ class ArenaCameraNodeletBase : public nodelet::Nodelet {
 
   ArenaCameraParameter arena_camera_parameter_set_;
 
-  std::unique_ptr<image_transport::ImageTransport> it_;
+  std::unique_ptr<image_transport::ImageTransport> image_transport_;
   image_transport::CameraPublisher img_raw_pub_;
 
   std::shared_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
-
-  std::vector<std::size_t> sampling_indices_;
 
   boost::recursive_mutex device_mutex_;
 
@@ -290,7 +291,7 @@ class ArenaCameraStreamingNodelet : public ArenaCameraNodeletBase {
   ArenaCameraStreamingNodelet();
   virtual ~ArenaCameraStreamingNodelet();
 
-  void onSuccessfulInit() override;
+  void onCameraConnect() override;
 
  protected:
   typedef std::function<void(Arena::IImage *pImage)> ImageCallback_t;
@@ -320,7 +321,7 @@ class ArenaCameraPolledNodelet : public ArenaCameraNodeletBase {
   ArenaCameraPolledNodelet();
   virtual ~ArenaCameraPolledNodelet();
 
-  void onSuccessfulInit() override;
+  void onCameraConnect() override;
 
   /// Callback for the grab images action
   /// @param goal the goal

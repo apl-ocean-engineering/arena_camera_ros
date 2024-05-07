@@ -14,6 +14,9 @@
     <arg name="run_web_server" default="false" />
     <arg name="web_server_port" default="8080" />
 
+    <arg name="serial_number" type="string" default="" />
+    <arg name="retry" default="true" doc="If true, driver will retry camera connection;  if false, driver will fail if it can't find camera"/>
+
     <arg unless="$(arg debug)" name="launch_prefix" value="" />
     <arg     if="$(arg debug)" name="launch_prefix" value="gdb -ex run --args" />
 
@@ -30,6 +33,9 @@
     <!-- The main camera driver nodelet -->
     <node name="$(arg node_name)" pkg="nodelet" type="nodelet" output="screen"
             args="load arena_camera/ArenaCameraStreamingNodelet $(arg manager)" >
+        <param name="serial_number" type="string" value="$(arg serial_number)" />
+        <param name="retry" value="$(arg retry)"/>
+
         <rosparam command="load" file="$(arg config_file)" />
     </node>
 

@@ -64,10 +64,9 @@ ArenaCameraNodeletBase::ArenaCameraNodeletBase()
       pDevice_(nullptr),
       is_streaming_(false),
       arena_camera_parameter_set_(),
-      it_(nullptr),
+      image_transport_(nullptr),
       img_raw_pub_(),
-      camera_info_manager_(),
-      sampling_indices_() {}
+      camera_info_manager_() {}
 
 ArenaCameraNodeletBase::~ArenaCameraNodeletBase() {
   if (pDevice_ != nullptr) {
@@ -87,11 +86,20 @@ void ArenaCameraNodeletBase::onInit() {
   ros::NodeHandle &nh = getNodeHandle();
   ros::NodeHandle &pnh = getPrivateNodeHandle();
 
+  try {
+    // Open the Arena SDK
+    pSystem_ = Arena::OpenSystem();
+  } catch (GenICam::GenericException &e) {
+    NODELET_ERROR_STREAM(
+        "Error while initializing Arena SDK: " << e.GetDescription());
+    return;
+  }
+
   metadata_pub_ =
       nh.advertise<imaging_msgs::ImagingMetadata>("imaging_metadata", 1);
 
-  it_.reset(new image_transport::ImageTransport(nh));
-  img_raw_pub_ = it_->advertiseCamera("image_raw", 1);
+  image_transport_.reset(new image_transport::ImageTransport(nh));
+  img_raw_pub_ = image_transport_->advertiseCamera("image_raw", 1);
 
   camera_info_manager_ =
       std::make_shared<camera_info_manager::CameraInfoManager>(nh);
@@ -99,39 +107,108 @@ void ArenaCameraNodeletBase::onInit() {
   // Initialize parameters from parameter server
   arena_camera_parameter_set_.readFromRosParameterServer(pnh);
 
+  _dynReconfigureServer =
+      std::make_shared<DynReconfigureServer>(getPrivateNodeHandle());
+
+  // \todo{} Consider using rosparam helpers?
+  float check_period_seconds = 10, retry_period_seconds = 10;
+
+  bool do_retry;
+  pnh.param("retry", do_retry, true);
+
+  if (!pnh.getParam("check_period_sec", check_period_seconds) && do_retry) {
+    NODELET_FATAL("Param \"check_period_sec\" not supplied");
+    return;
+  }
+
+  if (!pnh.getParam("retry_period_sec", retry_period_seconds) && do_retry) {
+    NODELET_FATAL("Param \"retry_period_sec\" not supplied");
+    return;
+  }
+
+  const ros::Duration camera_check_period(check_period_seconds);
+  const ros::Duration camera_retry_period(retry_period_seconds);
+
+  if (do_retry) {
+    // The primary try-connect-catch-error-retry-state machine
+    //
+    // \todo{}  Just as a note to self.  Is init() supposed to return?
+    //          should this be in a timer loop?
+    bool was_connected = false;
+    while (ros::ok()) {
+      if (pDevice_ && pDevice_->IsConnected()) {
+        was_connected = true;
+        camera_check_period.sleep();
+      } else {
+        if (was_connected) {
+          NODELET_WARN("!! Camera Connection dropped.");
+
+          if (camera_poll_timer_.isValid()) {
+            camera_poll_timer_.stop();
+          }
+
+          onCameraDisconnect();
+
+          is_streaming_ = false;
+          pSystem_->DestroyDevice(pDevice_);
+          pDevice_ = nullptr;
+        }
+
+        was_connected = false;
+
+        // Camera is not connected
+        NODELET_DEBUG("Trying to connect to camera...");
+        if (!tryConnect()) {
+          if (!do_retry) {
+            NODELET_ERROR(
+                "Could not connect to camera, and retry:=false, giving up");
+            return;
+          }
+
+          NODELET_DEBUG("Couldn't connect, sleeping...");
+          camera_retry_period.sleep();
+        }
+      }
+    }
+  } else {
+    if (!tryConnect()) {
+      NODELET_ERROR("Could not connect to camera, and retry:=false, giving up");
+    }
+  }
+}
+
+bool ArenaCameraNodeletBase::tryConnect() {
   try {
     // Open the Arena SDK
-    pSystem_ = Arena::OpenSystem();
-    pSystem_->UpdateDevices(100);
-    if (pSystem_->GetDevices().size() == 0) {
-      NODELET_FATAL("Did not detect any cameras!!");
-      return;
+    if (pSystem_->UpdateDevices(100)) {
+      NODELET_INFO("Device list changed!");
     }
 
-    NODELET_WARN("Looking for camera!");
+    if (pSystem_->GetDevices().size() == 0) {
+      NODELET_ERROR("!! Arena SDK did not detect any cameras");
+      return false;
+    }
 
     if (!arena_camera_parameter_set_.deviceUserID().empty()) {
       if (!registerCameraByUserId(arena_camera_parameter_set_.deviceUserID())) {
         NODELET_FATAL_STREAM("Unable to find a camera with DeviceUserId \""
                              << arena_camera_parameter_set_.deviceUserID()
                              << "\"");
-        return;
+        return false;
       }
     } else if (!arena_camera_parameter_set_.serialNumber().empty()) {
       if (!registerCameraBySerialNumber(
               arena_camera_parameter_set_.serialNumber())) {
         NODELET_FATAL_STREAM("Unable to find a camera with Serial Number "
                              << arena_camera_parameter_set_.serialNumber());
-        return;
+        return false;
       }
     } else {
       if (!registerCameraByAuto()) {
         NODELET_FATAL_STREAM("Unable to find any cameras to register");
-        return;
+        return false;
       }
     }
-
-    NODELET_WARN("Found camera!");
 
     // Validate that the camera is from Lucid
     // (otherwise the Arena SDK will segfault)
@@ -151,18 +228,21 @@ void ArenaCameraNodeletBase::onInit() {
 
     NODELET_INFO("Configuring camera...");
     if (!configureCamera()) {
-      NODELET_FATAL_STREAM("Unable to configure camera");
-      return;
+      NODELET_ERROR_STREAM("Unable to configure camera");
+      return false;
     }
 
   } catch (GenICam::GenericException &e) {
     NODELET_ERROR_STREAM(
         "Error while initializing camera: " << e.GetDescription());
-    return;
+    return false;
   }
 
-  NODELET_INFO("Successfully initialized");
-  onSuccessfulInit();
+  // setCallback will cause the callback to be called...
+  _dynReconfigureServer->setCallback(boost::bind(
+      &ArenaCameraNodeletBase::reconfigureCallbackWrapper, this, _1, _2));
+
+  onCameraConnect();
 
   diagnostics_updater_.setHardwareID("none");
   diagnostics_updater_.add(
@@ -178,19 +258,25 @@ void ArenaCameraNodeletBase::onInit() {
   // It's weird that we can subscribe to gain and exposure, but don't actually
   // get updates without calling "poll"
   const int poll_ms = 100;
-  camera_poll_timer_ = nh.createTimer(
-      ros::Duration(poll_ms * (1.0 / 1000.0)),
-      [&](const ros::TimerEvent &) { pDevice_->GetNodeMap()->Poll(poll_ms); });
+  camera_poll_timer_ = getNodeHandle().createTimer(
+      ros::Duration(poll_ms * (1.0 / 1000.0)), [&](const ros::TimerEvent &) {
+        try {
+          if (pDevice_) {
+            pDevice_->GetNodeMap()->Poll(poll_ms);
+          }
+        } catch (GenICam::GenericException &e) {
+          NODELET_WARN_STREAM(
+              "Error while polling camera: " << e.GetDescription());
+        }
+      });
 
-  _dynReconfigureServer = std::make_shared<DynReconfigureServer>(pnh);
-  _dynReconfigureServer->setCallback(boost::bind(
-      &ArenaCameraNodeletBase::reconfigureCallbackWrapper, this, _1, _2));
+  return true;
 }
 
 //===================================================================
 //
 // Functions to find/register a camera
-
+//
 bool ArenaCameraNodeletBase::registerCameraByUserId(
     const std::string &device_user_id_to_open) {
   ROS_ASSERT(pSystem_);
@@ -212,10 +298,10 @@ bool ArenaCameraNodeletBase::registerCameraByUserId(
     }
   }
 
-  NODELET_ERROR_STREAM(
-      "Couldn't find the camera that matches the "
-      << "given DeviceUserID: \"" << device_user_id_to_open << "\"! "
-      << "Either the ID is wrong or the cam is not yet connected");
+  // NODELET_ERROR_STREAM(
+  //     "Couldn't find the camera that matches the "
+  //     << "given DeviceUserID: \"" << device_user_id_to_open << "\"! "
+  //     << "Either the ID is wrong or the cam is not yet connected");
   return false;
 }
 
@@ -239,10 +325,10 @@ bool ArenaCameraNodeletBase::registerCameraBySerialNumber(
     }
   }
 
-  NODELET_ERROR_STREAM(
-      "Couldn't find the camera that matches the "
-      << "given Serial Number: " << serial_number << "! "
-      << "Either the ID is wrong or the camera is not connected");
+  // NODELET_ERROR_STREAM(
+  //     "Couldn't find the camera that matches the "
+  //     << "given Serial Number: " << serial_number << "! "
+  //     << "Either the ID is wrong or the camera is not connected");
   return false;
 }
 
@@ -275,7 +361,6 @@ bool ArenaCameraNodeletBase::registerCameraByAuto() {
 //===================================================================
 //
 //
-
 bool ArenaCameraNodeletBase::configureCamera() {
   ros::NodeHandle nh = getNodeHandle();
   auto pNodeMap = pDevice_->GetNodeMap();
@@ -283,8 +368,7 @@ bool ArenaCameraNodeletBase::configureCamera() {
   // **NOTE** This function only performs one-off configuration which is
   // not also accessible through dynamic_reconfigure.
   //
-  // dyn_reconfigure parameters will be handled in the callback when it
-  // is called for the first time at node startup.
+  // dyn_reconfigure parameters will be handled in the callback
 
   try {
     NODELET_INFO_STREAM(
@@ -294,7 +378,7 @@ bool ArenaCameraNodeletBase::configureCamera() {
         "Device firmware: " << Arena::GetNodeValue<GenICam::gcstring>(
             pDevice_->GetNodeMap(), "DeviceFirmwareVersion"));
 
-    // Parameters specific to GigER cameras
+    // Parameters specific to GigE cameras
     if (Arena::GetNodeValue<GenICam::gcstring>(
             pDevice_->GetNodeMap(), "DeviceTLType") == "GigEVision") {
       NODELET_INFO("GigE device, performing GigE specific configuration:");
@@ -358,9 +442,6 @@ bool ArenaCameraNodeletBase::configureCamera() {
       Arena::SetNodeValue<GenICam::gcstring>(pNodeMap, "TriggerSource",
                                              "Software");
     }
-
-    //!! Parameters controlled by param / dynamic reonfigure are not set here
-    //!! Assume there will be an immediate call from dynamic reconfigure
 
     // LUT
     NODELET_INFO_STREAM(
@@ -478,14 +559,15 @@ bool ArenaCameraNodeletBase::configureCamera() {
 // Start/stop streaming
 
 void ArenaCameraNodeletBase::startStreaming() {
-  if (!is_streaming_) {
+  if (pDevice_ && !is_streaming_) {
+    NODELET_WARN("Starting streaming....");
     pDevice_->StartStream();
     is_streaming_ = true;
   }
 }
 
 void ArenaCameraNodeletBase::stopStreaming() {
-  if (is_streaming_) {
+  if (pDevice_ && is_streaming_) {
     pDevice_->StopStream();
     is_streaming_ = false;
   }
@@ -518,7 +600,7 @@ void ArenaCameraNodeletBase::updateFrameRate(float frame_rate) {
     }
     // special case:
     // dues to inacurate float comparision we skip. If we set it it might
-    // throw becase it could be a lil larger than the max avoid the exception
+    // throw becase it could be slightly larger than the max avoid the exception
     // (double accuracy issue when setting the node) request frame rate very
     // close to device max
     else if (cmdlnParamFrameRate == maximumFrameRate) {
@@ -545,8 +627,6 @@ void ArenaCameraNodeletBase::updateFrameRate(float frame_rate) {
         "Framerate has been set to "
         << Arena::GetNodeValue<double>(pNodeMap, "AcquisitionFrameRate")
         << " Hz");
-
-    // if (was_streaming) startStreaming();
 
   } catch (GenICam::GenericException &e) {
     NODELET_INFO_STREAM("Exception while changing frame rate: " << e.what());
@@ -1180,57 +1260,71 @@ void ArenaCameraNodeletBase::enableLUT(bool enable) {
 
 void ArenaCameraNodeletBase::reconfigureCallback(ArenaCameraConfig &config,
                                                  uint32_t level) {
-  const auto stop_level =
-      (uint32_t)dynamic_reconfigure::SensorLevels::RECONFIGURE_STOP;
+  // Any config which _doesn't_ require a camera
 
-  const bool was_streaming = is_streaming_;
-  if (level >= stop_level) {
-    ROS_DEBUG("Stopping sensor for reconfigure");
-    stopStreaming();
-  }
+  try {
+    if (pDevice_ && pDevice_->IsConnected()) {
+      // Below this requires a connected camera
 
-  // -- The following params require stopping streaming, only set if needed --
-  if (config.frame_rate != previous_config_.frame_rate) {
-    ROS_INFO_STREAM("Setting frame rate to " << config.frame_rate);
-    updateFrameRate(config.frame_rate);
-  }
+      const auto stop_level =
+          (uint32_t)dynamic_reconfigure::SensorLevels::RECONFIGURE_STOP;
 
-  if (config.auto_exposure) {
-    setExposure(ArenaCameraNodeletBase::AutoExposureMode::Continuous,
-                config.auto_exposure_max_ms);
-    setAutoExposureGain(config.auto_exposure_gain);
-  } else {
-    setExposure(ArenaCameraNodeletBase::AutoExposureMode::Off,
-                config.exposure_ms);
-  }
+      const bool was_streaming = is_streaming_;
+      if (level >= stop_level) {
+        ROS_DEBUG("Stopping sensor for reconfigure");
+        stopStreaming();
+      }
 
-  if (config.auto_gain) {
-    setGain(ArenaCameraNodeletBase::AutoGainMode::Continuous);
-  } else {
-    setGain(ArenaCameraNodeletBase::AutoGainMode::Off, config.gain);
-  }
+      // -- The following params require stopping streaming, only set if needed
+      // --
+      if (config.frame_rate != previous_config_.frame_rate) {
+        ROS_INFO_STREAM("Setting frame rate to " << config.frame_rate);
+        updateFrameRate(config.frame_rate);
+      }
 
-  if ((config.auto_gain != previous_config_.auto_gain) ||
-      (config.auto_exposure != previous_config_.auto_exposure) ||
-      (config.target_brightness != previous_config_.target_brightness)) {
-    const auto canAutoBrightness = (config.auto_gain || config.auto_exposure);
-    if (!canAutoBrightness) {
-      ROS_WARN_STREAM(
-          "Neither auto_gain or exposure_auto are set, so the brightness "
-          "target ("
-          << config.target_brightness << ") will be "
-          << "ignored!");
+      if (config.auto_exposure) {
+        setExposure(ArenaCameraNodeletBase::AutoExposureMode::Continuous,
+                    config.auto_exposure_max_ms);
+        setAutoExposureGain(config.auto_exposure_gain);
+      } else {
+        setExposure(ArenaCameraNodeletBase::AutoExposureMode::Off,
+                    config.exposure_ms);
+      }
+
+      if (config.auto_gain) {
+        setGain(ArenaCameraNodeletBase::AutoGainMode::Continuous);
+      } else {
+        setGain(ArenaCameraNodeletBase::AutoGainMode::Off, config.gain);
+      }
+
+      if ((config.auto_gain != previous_config_.auto_gain) ||
+          (config.auto_exposure != previous_config_.auto_exposure) ||
+          (config.target_brightness != previous_config_.target_brightness)) {
+        const auto canAutoBrightness =
+            (config.auto_gain || config.auto_exposure);
+        if (!canAutoBrightness) {
+          ROS_WARN_STREAM(
+              "Neither auto_gain or exposure_auto are set, so the brightness "
+              "target ("
+              << config.target_brightness << ") will be "
+              << "ignored!");
+        }
+        setTargetBrightness(config.target_brightness);
+      }
+
+      if (config.gamma != previous_config_.gamma) {
+        setGamma(config.gamma);
+      }
+
+      if ((level >= stop_level) && was_streaming) {
+        ROS_DEBUG("   ... restarting camera after reconfigure");
+        startStreaming();
+      }
     }
-    setTargetBrightness(config.target_brightness);
-  }
 
-  if (config.gamma != previous_config_.gamma) {
-    setGamma(config.gamma);
-  }
-
-  if ((level >= stop_level) && was_streaming) {
-    ROS_DEBUG("   ... restarting camera after reconfigure");
-    startStreaming();
+  } catch (const GenICam::GenericException &e) {
+    NODELET_ERROR_STREAM(
+        "Exception in reconfigure callback: " << e.GetDescription());
   }
 
   // Save config
