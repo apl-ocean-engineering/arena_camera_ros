@@ -3,8 +3,9 @@
 services:
   arena_camera:
     build:
-      dockerfile: Dockerfile
-    image: ghcr.io/apl-ocean-engineering/arena_camera_ros:latest
+      context: ..
+      dockerfile: .docker/Dockerfile
+    image: ghcr.io/apl-ocean-engineering/arena_camera_ros:${IMAGE_TAG:-latest}
     stdin_open: true
     tty: true
     network_mode: host
@@ -21,9 +22,15 @@ services:
 
   # Prebuild with _this_ copy of the repo mounted
   #
-  build_local:
+  mount_local:
     extends: prebuild
     volumes:
       - type: bind
         source: ..
         target: /home/ros/ros_ws/src/arena_camera_ros
+
+  build_local:
+    extends: arena_camera
+    build:
+      args:
+        BUILD_TYPE: local

@@ -1,4 +1,5 @@
 ARG ROS_VERSION=noetic
+ARG BUILD_TYPE=git
 
 #====================================================================
 # Preliminary image with dependencies
@@ -70,14 +71,14 @@ RUN groupadd --gid $USER_GID $USERNAME \
 USER $USERNAME
 
 # Install the default ROS entrypoint
-COPY --chmod=0755 ros_entrypoint.sh /home/$USERNAME/ros_entrypoint.sh
+COPY --chmod=0755 .docker/ros_entrypoint.sh /home/$USERNAME/ros_entrypoint.sh
 ENTRYPOINT [ "/home/ros/ros_entrypoint.sh" ]
 CMD ["/bin/bash"]
 
 #====================================================================
-# Intermediate image with cloned Git repos
+# Load cloned Git repos into image
 #====================================================================
-FROM ci as clone
+FROM ci as clone_git
 
 ARG WS_DIR=/home/$USERNAME/ros_ws
 ONBUILD WORKDIR ${WS_DIR}/src
@@ -90,16 +91,33 @@ ONBUILD RUN echo "Cloning from ${ARENA_CAMERA_ROS_BRANCH} branch ${ARENA_CAMERA_
 ONBUILD ADD https://api.github.com/repos/apl-ocean-engineering/arena_camera_ros/git/refs/heads/${ARENA_CAMERA_ROS_BRANCH} /tmp/version.json
 ONBUILD RUN git clone --depth 1 -b ${ARENA_CAMERA_ROS_BRANCH} ${ARENA_CAMERA_ROS_REPO}
 
+ONBUILD RUN vcs import --shallow --skip-existing < arena_camera_ros/arena_camera_ros.repos
+
+
 #====================================================================
-# Bring in ROS dependencies but don't buil
+# Load copy of local source into image
+#====================================================================
+FROM ci as clone_local
+
+ARG WS_DIR=/home/$USERNAME/ros_ws
+ONBUILD WORKDIR ${WS_DIR}/src
+
+# Manually install dependencies to prevent hitting the network if only the
+# local source has changed
+ONBUILD RUN git clone --depth 1 -b ros1 https://github.com/apl-ocean-engineering/imaging_msgs.git
+
+ONBUILD RUN echo "Adding local copy of arena_camera_ros to Docker image"
+ONBUILD ADD arena_camera ${WS_DIR}/src/arena_camera_ros/arena_camera
+ONBUILD ADD camera_control_msgs ${WS_DIR}/src/arena_camera_ros/camera_control_msgs
+ONBUILD ADD arena_camera_ros.repos ${WS_DIR}/src/arena_camera_ros/arena_camera_ros.repos
+
+#====================================================================
+# Bring in ROS dependencies but don't build
 #====================================================================
 #
-FROM clone as prebuild
+FROM clone_${BUILD_TYPE} as prebuild
 
 ARG WS_DIR
-WORKDIR ${WS_DIR}/src
-
-RUN vcs import --shallow --skip-existing < arena_camera_ros/arena_camera_ros.repos
 
 WORKDIR ${WS_DIR}
 
