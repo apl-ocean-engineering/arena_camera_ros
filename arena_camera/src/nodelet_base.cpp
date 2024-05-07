@@ -111,13 +111,17 @@ void ArenaCameraNodeletBase::onInit() {
       std::make_shared<DynReconfigureServer>(getPrivateNodeHandle());
 
   // \todo{} Consider using rosparam helpers?
-  float check_period_seconds, retry_period_seconds;
-  if (!pnh.getParam("check_period_sec", check_period_seconds)) {
+  float check_period_seconds = 10, retry_period_seconds = 10;
+
+  bool do_retry;
+  pnh.param("retry", do_retry, true);
+
+  if (!pnh.getParam("check_period_sec", check_period_seconds) && do_retry) {
     NODELET_FATAL("Param \"check_period_sec\" not supplied");
     return;
   }
 
-  if (!pnh.getParam("retry_period_sec", retry_period_seconds)) {
+  if (!pnh.getParam("retry_period_sec", retry_period_seconds) && do_retry) {
     NODELET_FATAL("Param \"retry_period_sec\" not supplied");
     return;
   }
@@ -125,38 +129,50 @@ void ArenaCameraNodeletBase::onInit() {
   const ros::Duration camera_check_period(check_period_seconds);
   const ros::Duration camera_retry_period(retry_period_seconds);
 
-  // The primary try-connect-catch-error-retry-state machine
-  //
-  // \todo{}  Just as a note to self.  Is init() supposed to return?
-  //          should this be in a timer loop?
-  bool was_connected = false;
-  while (ros::ok()) {
-    if (pDevice_ && pDevice_->IsConnected()) {
-      was_connected = true;
-      camera_check_period.sleep();
-    } else {
-      if (was_connected) {
-        NODELET_WARN("!! Camera Connection dropped.");
+  if (do_retry) {
+    // The primary try-connect-catch-error-retry-state machine
+    //
+    // \todo{}  Just as a note to self.  Is init() supposed to return?
+    //          should this be in a timer loop?
+    bool was_connected = false;
+    while (ros::ok()) {
+      if (pDevice_ && pDevice_->IsConnected()) {
+        was_connected = true;
+        camera_check_period.sleep();
+      } else {
+        if (was_connected) {
+          NODELET_WARN("!! Camera Connection dropped.");
 
-        if (camera_poll_timer_.isValid()) {
-          camera_poll_timer_.stop();
+          if (camera_poll_timer_.isValid()) {
+            camera_poll_timer_.stop();
+          }
+
+          onCameraDisconnect();
+
+          is_streaming_ = false;
+          pSystem_->DestroyDevice(pDevice_);
+          pDevice_ = nullptr;
         }
 
-        onCameraDisconnect();
+        was_connected = false;
 
-        is_streaming_ = false;
-        pSystem_->DestroyDevice(pDevice_);
-        pDevice_ = nullptr;
+        // Camera is not connected
+        NODELET_DEBUG("Trying to connect to camera...");
+        if (!tryConnect()) {
+          if (!do_retry) {
+            NODELET_ERROR(
+                "Could not connect to camera, and retry:=false, giving up");
+            return;
+          }
+
+          NODELET_DEBUG("Couldn't connect, sleeping...");
+          camera_retry_period.sleep();
+        }
       }
-
-      was_connected = false;
-
-      // Camera is not connected
-      NODELET_DEBUG("Trying to connect to camera...");
-      if (!tryConnect()) {
-        NODELET_DEBUG("Couldn't connect, sleeping...");
-        camera_retry_period.sleep();
-      }
+    }
+  } else {
+    if (!tryConnect()) {
+      NODELET_ERROR("Could not connect to camera, and retry:=false, giving up");
     }
   }
 }
